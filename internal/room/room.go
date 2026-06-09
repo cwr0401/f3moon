@@ -2,6 +2,7 @@ package room
 
 import (
 	"sync"
+	"time"
 
 	"github.com/cwr0401/f3moon/internal/model"
 )
@@ -17,23 +18,27 @@ const (
 
 // Room 房间
 type Room struct {
-	mu       sync.RWMutex
-	ID       string             `json:"id"`
-	Name     string             `json:"name"`
-	Mode     model.GameMode     `json:"mode"`
-	Status   RoomStatus         `json:"status"`
-	Players  [4]*RoomPlayer     `json:"players"`
-	Owner    string             `json:"owner"`
-	MaxPlayers int              `json:"max_players"`
+	mu         sync.RWMutex
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	Mode       model.GameMode `json:"mode"`
+	Status     RoomStatus     `json:"status"`
+	Players    [4]*RoomPlayer `json:"players"`
+	Owner      string         `json:"owner"`
+	MaxPlayers int            `json:"max_players"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	ClosedAt   *time.Time     `json:"closed_at,omitempty"`
+	Scores     map[string]int `json:"scores"`
 }
 
 // RoomPlayer 房间中的玩家
 type RoomPlayer struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	IsAI   bool   `json:"is_ai"`
-	Seat   int    `json:"seat"` // 座位号 0-3
-	Ready  bool   `json:"ready"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	IsAI  bool   `json:"is_ai"`
+	Seat  int    `json:"seat"` // 座位号 0-3
+	Ready bool   `json:"ready"`
 }
 
 // NewRoom 创建房间
@@ -42,6 +47,7 @@ func NewRoom(id, name string, mode model.GameMode, ownerID string) *Room {
 	if mode == model.GameMode3Player {
 		maxPlayers = 3
 	}
+	now := time.Now().UTC()
 	return &Room{
 		ID:         id,
 		Name:       name,
@@ -49,6 +55,9 @@ func NewRoom(id, name string, mode model.GameMode, ownerID string) *Room {
 		Status:     RoomWaiting,
 		Owner:      ownerID,
 		MaxPlayers: maxPlayers,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		Scores:     make(map[string]int),
 	}
 }
 
@@ -65,6 +74,7 @@ func (r *Room) AddPlayer(player *RoomPlayer) bool {
 		if r.Players[i] == nil {
 			player.Seat = i
 			r.Players[i] = player
+			r.updateTimestampLocked()
 			return true
 		}
 	}
@@ -79,6 +89,7 @@ func (r *Room) RemovePlayer(playerID string) bool {
 	for i := 0; i < r.MaxPlayers; i++ {
 		if r.Players[i] != nil && r.Players[i].ID == playerID {
 			r.Players[i] = nil
+			r.updateTimestampLocked()
 			return true
 		}
 	}
@@ -125,9 +136,42 @@ func (r *Room) SetReady(playerID string, ready bool) {
 	for i := 0; i < r.MaxPlayers; i++ {
 		if r.Players[i] != nil && r.Players[i].ID == playerID {
 			r.Players[i].Ready = ready
+			r.updateTimestampLocked()
 			return
 		}
 	}
+}
+
+// SetStatus 设置房间状态
+func (r *Room) SetStatus(status RoomStatus) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Status = status
+	r.updateTimestampLocked()
+}
+
+// Close 关闭房间
+func (r *Room) Close() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	closedAt := time.Now().UTC()
+	r.Status = RoomFinished
+	r.ClosedAt = &closedAt
+	r.UpdatedAt = closedAt
+	return closedAt
+}
+
+// SetScore 设置玩家积分
+func (r *Room) SetScore(playerID string, score int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.Scores == nil {
+		r.Scores = make(map[string]int)
+	}
+	r.Scores[playerID] = score
+	r.updateTimestampLocked()
 }
 
 // AddAIPlayer 添加AI玩家
@@ -145,6 +189,7 @@ func (r *Room) AddAIPlayer() *RoomPlayer {
 				Ready: true,
 			}
 			r.Players[i] = player
+			r.updateTimestampLocked()
 			return player
 		}
 	}
@@ -176,4 +221,8 @@ func (r *Room) ToModelPlayers() [4]*model.Player {
 	}
 
 	return players
+}
+
+func (r *Room) updateTimestampLocked() {
+	r.UpdatedAt = time.Now().UTC()
 }
