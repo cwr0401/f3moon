@@ -7,6 +7,12 @@ import (
 
 // dealCards 起牌: 三人各起25张
 func (sm *StateMachine) dealCards() {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// 进入起牌阶段(由 dealCards 内部设置, 避免 handleCut 释放锁后的竞态窗口)
+	sm.game.Phase = model.PhaseDeal
+
 	for i := 0; i < 25; i++ {
 		for p := 0; p < 3; p++ {
 			tile := sm.game.DrawFromTop()

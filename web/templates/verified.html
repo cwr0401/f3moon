@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>验证成功 - 荆楚花牌</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+               display: flex; justify-content: center; align-items: center;
+               min-height: 100vh; background: #1a1a2e; color: #e0e0e0; }
+        .card { background: #16213e; padding: 2.5rem; border-radius: 12px;
+                width: 100%; max-width: 400px; text-align: center;
+                box-shadow: 0 8px 32px rgba(0,0,0,.4); }
+        .icon { font-size: 3rem; margin-bottom: 1rem; }
+        h2 { color: #51cf66; margin-bottom: .75rem; }
+        p { color: #aaa; margin-bottom: 1.5rem; }
+        a { display: inline-block; padding: .6rem 2rem; background: #e2b714;
+            color: #1a1a2e; border-radius: 6px; text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="icon">&#10003;</div>
+    <h2>邮箱验证成功</h2>
+    <p>{{ .nickname }} ({{ .email }})，你的账号已激活。</p>
+    <a href="/login">前往登录</a>
+</div>
+</body>
+</html>

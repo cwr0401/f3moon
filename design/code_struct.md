@@ -57,4 +57,3 @@
 - AI策略：三级难度，困难模式包含跟张策略、撬张策略、胡数-听牌平衡评估
 - 编译验证：go build + go vet 均通过
 
-claude --resume e455361a-ce5a-4a79-8a7b-4219efe7ed7c

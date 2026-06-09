@@ -1,0 +1,694 @@
+basePath: /api/v1
+host: localhost:8080
+info:
+  contact: {}
+  description: 荆楚花牌(花好月圆)游戏服务端 API
+  title: 荆楚花牌 API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: 使用邮箱和密码登录，返回 JWT token
+      parameters:
+      - description: 登录信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"token\": \"string\", \"expires_at\": \"string\", \"user\":
+            {} }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "401":
+          description: '{ \"error\": \"invalid credentials\" }'
+          schema:
+            type: object
+        "403":
+          description: '{ \"error\": \"email not verified\" }'
+          schema:
+            type: object
+      summary: 用户登录
+      tags:
+      - 认证
+  /auth/me:
+    get:
+      description: 返回当前已认证用户的信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 用户信息
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"user not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 获取当前用户信息
+      tags:
+      - 认证
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: 注册新用户并发送验证邮件
+      parameters:
+      - description: 注册信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"user_id\": \"string\", \"message\": \"验证邮件已发送，请查收邮箱\"
+            }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "409":
+          description: '{ \"error\": \"email already taken\" }'
+          schema:
+            type: object
+      summary: 用户注册
+      tags:
+      - 认证
+  /auth/resend:
+    post:
+      consumes:
+      - application/json
+      description: 重新发送邮箱验证邮件（有频率限制）
+      parameters:
+      - description: 邮箱
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"message\": \"如果该邮箱已注册且未验证，验证邮件已发送\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "429":
+          description: '{ \"error\": \"resend throttled\" }'
+          schema:
+            type: object
+      summary: 重发验证邮件
+      tags:
+      - 认证
+  /auth/verify:
+    get:
+      description: 通过邮件中的 token 验证用户邮箱
+      parameters:
+      - description: 验证令牌
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: 验证成功页面
+          schema:
+            type: string
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "410":
+          description: '{ \"error\": \"token already used\" }'
+          schema:
+            type: object
+      summary: 验证邮箱
+      tags:
+      - 认证
+  /games/{id}:
+    get:
+      description: 获取指定游戏的完整状态
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 游戏状态
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 查询游戏状态
+      tags:
+      - 游戏
+  /games/{id}/cut:
+    post:
+      consumes:
+      - application/json
+      description: 歇家或闲二选择切牌位置（37-110）
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 切牌位置
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 切牌（腰牌）
+      tags:
+      - 游戏
+  /games/{id}/dang-jing:
+    post:
+      consumes:
+      - application/json
+      description: 选择当经牌（三、五、七之一）
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 当经选择
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 选择当经
+      tags:
+      - 游戏
+  /games/{id}/discard:
+    post:
+      consumes:
+      - application/json
+      description: 打出一张手牌
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 出牌信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 出牌
+      tags:
+      - 游戏
+  /games/{id}/draw:
+    post:
+      description: 从公牌顶部起一张牌
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 起牌
+      tags:
+      - 游戏
+  /games/{id}/ganta:
+    post:
+      description: 将手中同名牌加入已有的统组合中
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 赶塔
+      tags:
+      - 游戏
+  /games/{id}/pair:
+    post:
+      consumes:
+      - application/json
+      description: 对别人打出的牌进行碰牌操作
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 碰牌信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 碰牌（对/招/泛）
+      tags:
+      - 游戏
+  /games/{id}/pass:
+    post:
+      description: 放弃当前操作（碰牌、和牌等）
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 过
+      tags:
+      - 游戏
+  /games/{id}/tong:
+    post:
+      consumes:
+      - application/json
+      description: 请统阶段，玩家选择统牌或跳过
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 统牌信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 统牌抉择
+      tags:
+      - 游戏
+  /games/{id}/win:
+    post:
+      description: 声明和牌，系统验证手牌是否满足和牌条件
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 和牌（胡牌）
+      tags:
+      - 游戏
+  /rooms:
+    get:
+      description: 获取所有游戏房间列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"rooms\": [] }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 列出所有房间
+      tags:
+      - 房间
+    post:
+      consumes:
+      - application/json
+      description: 创建新游戏房间，创建者自动加入
+      parameters:
+      - description: 房间信息
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"room_id\": \"string\", \"room\": {} }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 创建房间
+      tags:
+      - 房间
+  /rooms/{id}:
+    get:
+      description: 根据房间 ID 查询房间详情
+      parameters:
+      - description: 房间 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 房间信息
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"room not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 查询房间
+      tags:
+      - 房间
+  /rooms/{id}/ai:
+    post:
+      description: 向房间添加一个AI玩家（AI自动准备）
+      parameters:
+      - description: 房间 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: AI 玩家信息
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"room is full\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"room not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 添加AI玩家
+      tags:
+      - 房间
+  /rooms/{id}/join:
+    post:
+      description: 加入指定房间
+      parameters:
+      - description: 房间 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 房间信息
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"room is full\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 加入房间
+      tags:
+      - 房间
+  /rooms/{id}/leave:
+    post:
+      description: 离开指定房间
+      parameters:
+      - description: 房间 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 离开房间
+      tags:
+      - 房间
+  /rooms/{id}/ready:
+    post:
+      consumes:
+      - application/json
+      description: 设置当前玩家的准备或取消准备状态
+      parameters:
+      - description: 房间 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 准备状态
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"room not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 设置准备状态
+      tags:
+      - 房间
+  /rooms/{id}/start:
+    post:
+      description: 房主开始游戏，需要房间已满且所有玩家已准备
+      parameters:
+      - description: 房间 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"started\", \"room_id\": \"string\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"room is not full\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"room not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 开始游戏
+      tags:
+      - 房间
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

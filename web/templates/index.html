@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>荆楚花牌</title>
+</head>
+<body>
+    <h1>荆楚花牌</h1>
+    <p>花好月圆</p>
+    <p id="user-info"></p>
+    <p><a href="#" id="logout-link">退出登录</a></p>
+
+    <script>
+    (function() {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+            return;
+        }
+
+        fetch('/api/v1/auth/me', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        })
+        .then(function(res) {
+            if (!res.ok) {
+                localStorage.removeItem('token');
+                window.location.href = '/login';
+                return;
+            }
+            return res.json();
+        })
+        .then(function(user) {
+            if (user) {
+                document.getElementById('user-info').textContent =
+                    user.nickname || user.email || user.id;
+            }
+        });
+
+        document.getElementById('logout-link').addEventListener('click', function(e) {
+            e.preventDefault();
+            localStorage.removeItem('token');
+            window.location.href = '/login';
+        });
+    })();
+    </script>
+</body>
+</html>

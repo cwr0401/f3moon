@@ -1,6 +1,7 @@
 package game
 
 import (
+	"errors"
 	"math/rand"
 	"sync"
 	"time"
@@ -11,7 +12,7 @@ import (
 
 // StateMachine 游戏状态机
 type StateMachine struct {
-	mu        sync.Mutex
+	mu        sync.RWMutex
 	game      *model.GameState
 	broadcast NotifyBroadcaster
 	rng       *rand.Rand
@@ -28,6 +29,8 @@ func NewStateMachine(game *model.GameState, broadcast NotifyBroadcaster) *StateM
 
 // Game 返回当前游戏状态
 func (sm *StateMachine) Game() *model.GameState {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	return sm.game
 }
 
@@ -39,10 +42,16 @@ func (sm *StateMachine) HandleEvent(evt GameEvent) error {
 	switch sm.game.Phase {
 	case model.PhaseCut:
 		return sm.handleCut(evt)
+	case model.PhaseDeal:
+		return errors.New("dealing in progress")
 	case model.PhaseTongAsk:
 		return sm.handleTongAsk(evt)
 	case model.PhasePlay:
 		return sm.handlePlay(evt)
+	case model.PhaseWaiting, model.PhaseShuffle:
+		return errors.New("game not started")
+	case model.PhaseCheck, model.PhaseFinished:
+		return errors.New("game already ended")
 	}
 	return nil
 }
@@ -72,24 +81,30 @@ func (sm *StateMachine) StartGame() error {
 // handleCut 处理切牌
 func (sm *StateMachine) handleCut(evt GameEvent) error {
 	if evt.Type != EventCut {
-		return nil
+		return errors.New("invalid event type for cut phase")
 	}
 	data, ok := evt.Data.(CutData)
 	if !ok {
-		return nil
+		return errors.New("invalid cut data")
+	}
+
+	// 校验切牌人身份
+	cutIdx := sm.game.CutPlayer()
+	cutPlayer := sm.game.Players[cutIdx]
+	if cutPlayer == nil || cutPlayer.ID != evt.PlayerID {
+		return errors.New("not the cut player")
 	}
 
 	position := data.Position
 	if position < 37 || position > 110 {
-		return nil
+		return errors.New("cut position out of range [37, 110]")
 	}
 
 	// 切牌
 	sm.game.DrawPile = engine.Cut(sm.game.DrawPile, position)
 
-	// 进入起牌阶段
-	sm.game.Phase = model.PhaseDeal
-	sm.dealCards()
+	// 异步起牌(phase 转换由 dealCards 内部完成)
+	go sm.dealCards()
 
 	return nil
 }

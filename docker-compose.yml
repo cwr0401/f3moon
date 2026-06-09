@@ -1,0 +1,43 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-f3moon_root_pw}
+      MYSQL_DATABASE: f3moon
+      MYSQL_USER: f3moon
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-f3moon_pw}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: "8080"
+      SERVER_HOST: "0.0.0.0"
+      MYSQL_DSN: "f3moon:${MYSQL_PASSWORD:-f3moon_pw}@tcp(mysql:3306)/f3moon?parseTime=true&charset=utf8mb4"
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      JWT_TTL_HOURS: "24"
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      SMTP_DEV_MODE: ${SMTP_DEV_MODE:-true}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+
+volumes:
+  mysql_data:

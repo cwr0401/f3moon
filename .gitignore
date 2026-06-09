@@ -1,1 +1,5 @@
 .lingma
+
+# Vue frontend
+web/node_modules/
+web/dist/

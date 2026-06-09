@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 荆楚花牌</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+               display: flex; justify-content: center; align-items: center;
+               min-height: 100vh; background: #1a1a2e; color: #e0e0e0; }
+        .card { background: #16213e; padding: 2.5rem; border-radius: 12px;
+                width: 100%; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
+        h2 { text-align: center; margin-bottom: .5rem; color: #e2b714; }
+        .subtitle { text-align: center; margin-bottom: 1.5rem; color: #888; font-size: .9rem; }
+        label { display: block; margin: .75rem 0 .25rem; font-size: .85rem; color: #aaa; }
+        input { width: 100%; padding: .6rem .8rem; border: 1px solid #333; border-radius: 6px;
+                background: #0f3460; color: #e0e0e0; font-size: 1rem; outline: none; }
+        input:focus { border-color: #e2b714; }
+        button { width: 100%; padding: .7rem; margin-top: 1.25rem; border: none;
+                 border-radius: 6px; background: #e2b714; color: #1a1a2e;
+                 font-size: 1rem; font-weight: 600; cursor: pointer; }
+        button:disabled { opacity: .6; cursor: not-allowed; }
+        .error { color: #ff6b6b; font-size: .85rem; margin-top: .5rem; min-height: 1.2em; }
+        .success { color: #51cf66; }
+        .switch { text-align: center; margin-top: 1rem; font-size: .85rem; color: #888; }
+        .switch a { color: #e2b714; cursor: pointer; text-decoration: none; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <!-- 登录 -->
+    <div id="login-form">
+        <h2>登录</h2>
+        <p class="subtitle">荆楚花牌 · 花好月圆</p>
+        <label for="login-email">邮箱</label>
+        <input type="email" id="login-email" autocomplete="email">
+        <label for="login-pwd">密码</label>
+        <input type="password" id="login-pwd" autocomplete="current-password">
+        <p class="error" id="login-error"></p>
+        <button id="login-btn">登录</button>
+        <p class="switch">没有账号？<a id="to-register">注册</a></p>
+    </div>
+
+    <!-- 注册 -->
+    <div id="register-form" class="hidden">
+        <h2>注册</h2>
+        <p class="subtitle">荆楚花牌 · 花好月圆</p>
+        <label for="reg-email">邮箱</label>
+        <input type="email" id="reg-email" autocomplete="email">
+        <label for="reg-nick">昵称（选填）</label>
+        <input type="text" id="reg-nick">
+        <label for="reg-pwd">密码（至少 8 位，含字母和数字）</label>
+        <input type="password" id="reg-pwd" autocomplete="new-password">
+        <p class="error" id="reg-error"></p>
+        <button id="reg-btn">注册</button>
+        <p class="switch">已有账号？<a id="to-login">登录</a></p>
+    </div>
+</div>
+
+<script>
+(function() {
+    // 如果已登录则跳转
+    if (localStorage.getItem('token')) {
+        window.location.href = '/';
+        return;
+    }
+
+    var loginForm = document.getElementById('login-form');
+    var registerForm = document.getElementById('register-form');
+
+    document.getElementById('to-register').onclick = function() {
+        loginForm.classList.add('hidden');
+        registerForm.classList.remove('hidden');
+    };
+    document.getElementById('to-login').onclick = function() {
+        registerForm.classList.add('hidden');
+        loginForm.classList.remove('hidden');
+    };
+
+    function setLoading(btn, loading) {
+        btn.disabled = loading;
+        btn.textContent = loading ? '请稍候...' : btn.dataset.label || btn.textContent;
+    }
+
+    // 登录
+    document.getElementById('login-btn').dataset.label = '登录';
+    document.getElementById('login-btn').onclick = function() {
+        var errEl = document.getElementById('login-error');
+        errEl.textContent = '';
+        var btn = this;
+        setLoading(btn, true);
+
+        fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: document.getElementById('login-email').value,
+                password: document.getElementById('login-pwd').value
+            })
+        })
+        .then(function(res) { return res.json().then(function(d) { return { status: res.status, data: d }; }); })
+        .then(function(r) {
+            if (r.status !== 200) {
+                errEl.textContent = r.data.error || '登录失败';
+                return;
+            }
+            localStorage.setItem('token', r.data.token);
+            window.location.href = '/';
+        })
+        .catch(function() { errEl.textContent = '网络错误'; })
+        .finally(function() { setLoading(btn, false); });
+    };
+
+    // 注册
+    document.getElementById('reg-btn').dataset.label = '注册';
+    document.getElementById('reg-btn').onclick = function() {
+        var errEl = document.getElementById('reg-error');
+        errEl.textContent = '';
+        var btn = this;
+        setLoading(btn, true);
+
+        fetch('/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: document.getElementById('reg-email').value,
+                password: document.getElementById('reg-pwd').value,
+                nickname: document.getElementById('reg-nick').value
+            })
+        })
+        .then(function(res) { return res.json().then(function(d) { return { status: res.status, data: d }; }); })
+        .then(function(r) {
+            if (r.status !== 200) {
+                errEl.textContent = r.data.error || '注册失败';
+                return;
+            }
+            errEl.className = 'error success';
+            errEl.textContent = '注册成功！验证邮件已发送，请查收后登录。';
+        })
+        .catch(function() { errEl.textContent = '网络错误'; })
+        .finally(function() { setLoading(btn, false); });
+    };
+})();
+</script>
+</body>
+</html>

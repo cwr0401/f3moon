@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-dark: #1a1a2e;
+  --color-bg-card: #16213e;
+  --color-bg-input: #0f3460;
+  --color-accent: #e2b714;
+  --color-accent-dim: #b8930f;
+  --color-tile-red: #ef4444;
+  --color-tile-black: #d1d5db;
+  --color-jing: #fbbf24;
+  --color-tile-back: #334155;
+}
+
+.tile-card {
+  @apply relative w-12 h-[4.5rem] rounded-lg flex flex-col items-center justify-center
+         bg-[#f5f0e8] border-2 border-amber-700 shadow-md cursor-pointer
+         select-none transition-all duration-150;
+}
+
+.tile-card:hover {
+  @apply -translate-y-1 shadow-lg;
+}
+
+.tile-card.selected {
+  @apply -translate-y-2 ring-2 ring-jing shadow-lg;
+}
+
+.tile-card.tile-red .tile-name {
+  @apply text-tile-red;
+}
+
+.tile-card.tile-black .tile-name {
+  @apply text-tile-black;
+}
+
+.tile-card.tile-jing {
+  @apply border-jing;
+}
+
+.tile-card.tile-back {
+  @apply bg-tile-back border-slate-600;
+}
+
+.tile-name {
+  @apply text-lg font-bold leading-tight;
+}
+
+.tile-flower {
+  @apply text-[10px] text-amber-600 absolute top-0.5 left-1;
+}
+
+.tile-red-dot {
+  @apply w-1.5 h-1.5 rounded-full bg-tile-red absolute bottom-1 right-1;
+}
+
+.game-table {
+  @apply relative w-full h-full bg-green-900/80 rounded-2xl border-4 border-amber-900/50;
+  background-image: radial-gradient(ellipse at center, rgba(34, 80, 50, 0.6) 0%, transparent 70%);
+}
