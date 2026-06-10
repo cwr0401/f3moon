@@ -14,6 +14,7 @@ import (
 	"github.com/cwr0401/f3moon/internal/auth"
 	"github.com/cwr0401/f3moon/internal/config"
 	"github.com/cwr0401/f3moon/internal/db"
+	"github.com/cwr0401/f3moon/internal/game"
 	"github.com/cwr0401/f3moon/internal/handler"
 	"github.com/cwr0401/f3moon/internal/middleware"
 	"github.com/cwr0401/f3moon/internal/room"
@@ -36,7 +37,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("初始化数据库失败: %v", err)
 	}
-	if err := db.AutoMigrate(gdb, &auth.User{}, &auth.VerificationToken{}, &room.RoomRecord{}, &room.RoomScore{}); err != nil {
+	if err := db.AutoMigrate(gdb, &auth.User{}, &auth.VerificationToken{}, &room.RoomRecord{}, &room.RoomScore{}, &game.GameDeckRecord{}); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
 	log.Println("数据库连接成功")
@@ -61,10 +62,12 @@ func main() {
 	// 初始化组件
 	roomRepo := room.NewGORMRepository(gdb)
 	roomManager := room.NewManager(roomRepo)
+	gameRepo := game.NewGORMRepository(gdb)
 	hub := ws.NewHub()
 	authHandler := handler.NewAuthHandler(authSvc)
-	gameHandler := handler.NewGameHandler()
-	roomHandler := handler.NewRoomHandler(roomManager, gameHandler, hub)
+	gameHandler := handler.NewGameHandler(gameRepo)
+	shuffleHandler := handler.NewShuffleHandler()
+	roomHandler := handler.NewRoomHandler(roomManager, gameHandler, hub, gameRepo)
 	wsHandler := handler.NewWSHandler(hub, jwtMgr)
 
 	// 设置Gin
@@ -97,6 +100,9 @@ func main() {
 	// API路由
 	api := r.Group("/api/v1")
 	{
+		// 公开工具接口
+		api.POST("/shuffle", shuffleHandler.Shuffle)
+
 		// 认证（公开）
 		authGroup := api.Group("/auth")
 		{
@@ -131,6 +137,7 @@ func main() {
 			{
 				games.GET("/:id", gameHandler.GetGame)
 				games.POST("/:id/cut", gameHandler.Cut)
+				games.POST("/:id/deal", gameHandler.Deal)
 				games.POST("/:id/tong", gameHandler.Tong)
 				games.POST("/:id/draw", gameHandler.Draw)
 				games.POST("/:id/discard", gameHandler.Discard)

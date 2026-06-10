@@ -2,9 +2,11 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/cwr0401/f3moon/internal/engine"
 	"github.com/cwr0401/f3moon/internal/game"
 	"github.com/cwr0401/f3moon/internal/middleware"
 	"github.com/cwr0401/f3moon/internal/model"
@@ -12,13 +14,15 @@ import (
 
 // GameHandler 游戏接口处理器
 type GameHandler struct {
-	games map[string]*game.StateMachine
+	games    map[string]*game.StateMachine
+	gameRepo game.Repository
 }
 
 // NewGameHandler 创建游戏处理器
-func NewGameHandler() *GameHandler {
+func NewGameHandler(gameRepo game.Repository) *GameHandler {
 	return &GameHandler{
-		games: make(map[string]*game.StateMachine),
+		games:    make(map[string]*game.StateMachine),
+		gameRepo: gameRepo,
 	}
 }
 
@@ -56,6 +60,51 @@ func (h *GameHandler) Cut(c *gin.Context) {
 		return
 	}
 
+	// 1. 从数据库获取游戏牌栈记录
+	deck, err := h.gameRepo.GetGameDeckByRoomID(gameID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "game deck not found"})
+		return
+	}
+
+	// 2. 验证是否已完成洗牌
+	if !deck.Shuffled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "game not shuffled yet"})
+		return
+	}
+
+	// 3. 验证是否已完成切牌
+	if deck.CutFinished {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "already cut"})
+		return
+	}
+
+	// 4. 验证切牌位置范围
+	position := req.Position
+	if position < 37 || position > 110 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cut position out of range [37, 110]"})
+		return
+	}
+
+	// 5. 执行切牌：将 0~position 的牌从栈顶弹出，从栈底压入
+	cutStack := engine.CutIDs(deck.ShuffleStack, position)
+
+	// 6. 更新数据库记录
+	deck.CutStack = cutStack
+	deck.CutPosition = position
+	deck.CutFinished = true
+	deck.UpdatedAt = time.Now().UTC()
+
+	if err := h.gameRepo.UpdateGameDeck(deck); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update game deck"})
+		return
+	}
+
+	// 7. 同时更新内存中的游戏状态（转换ID为Tile对象）
+	gs := sm.Game()
+	gs.DrawPile = model.GetTilesFromIDs(cutStack)
+
+	// 8. 触发游戏事件（保持原有逻辑）
 	evt := game.GameEvent{
 		Type:     game.EventCut,
 		PlayerID: c.GetString(middleware.ContextKeyUserID),
@@ -66,6 +115,7 @@ func (h *GameHandler) Cut(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -369,6 +419,109 @@ func (h *GameHandler) DangJing(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// Deal 发牌
+// @Summary 发牌
+// @Description 执行发牌流程，给三个玩家发牌
+// @Tags 游戏
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "游戏 ID"
+// @Success 200 {object} object "{ \"status\": \"ok\" }"
+// @Failure 400 {object} object "{ \"error\": \"string\" }"
+// @Failure 404 {object} object "{ \"error\": \"game not found\" }"
+// @Router /games/{id}/deal [post]
+func (h *GameHandler) Deal(c *gin.Context) {
+	gameID := c.Param("id")
+	sm, ok := h.games[gameID]
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+
+	// 1. 从数据库获取游戏牌栈记录
+	deck, err := h.gameRepo.GetGameDeckByRoomID(gameID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "game deck not found"})
+		return
+	}
+
+	// 2. 验证是否完成洗牌
+	if !deck.Shuffled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "game not shuffled yet"})
+		return
+	}
+
+	// 3. 验证是否完成切牌
+	if !deck.CutFinished {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "game not cut yet"})
+		return
+	}
+
+	// 4. 验证是否已完成发牌
+	if deck.DealFinished {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "already dealt"})
+		return
+	}
+
+	// 5. 从切牌栈数据构建栈
+	cutStack := deck.CutStack
+	stackTop := deck.StackTop
+
+	// 6. 依次从栈顶弹出牌ID，按庄家、闲家一、闲家二的顺序发牌，每人25张
+	var dealerHand, player1Hand, player2Hand []uint8
+	for i := 0; i < 25; i++ {
+		// 庄家
+		dealerHand = append(dealerHand, cutStack[stackTop])
+		stackTop++
+		// 闲家一
+		player1Hand = append(player1Hand, cutStack[stackTop])
+		stackTop++
+		// 闲家二
+		player2Hand = append(player2Hand, cutStack[stackTop])
+		stackTop++
+	}
+
+	// 7. 给庄家再发1张牌
+	dealerHand = append(dealerHand, cutStack[stackTop])
+	stackTop++
+
+	// 8. 从游戏状态获取玩家ID
+	gs := sm.Game()
+	var dealerID, player1ID, player2ID string
+	if len(gs.Players) >= 3 {
+		dealerID = gs.Players[0].ID
+		player1ID = gs.Players[1].ID
+		player2ID = gs.Players[2].ID
+	}
+
+	// 9. 更新数据库记录
+	deck.StackTop = stackTop
+	deck.StackBottom = len(cutStack) - 1
+	deck.DealerID = dealerID
+	deck.Player1ID = player1ID
+	deck.Player2ID = player2ID
+	deck.DealerHand = dealerHand
+	deck.Player1Hand = player1Hand
+	deck.Player2Hand = player2Hand
+	deck.DealerFinished = true
+	deck.DealFinished = true
+	deck.UpdatedAt = time.Now().UTC()
+
+	if err := h.gameRepo.UpdateGameDeck(deck); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update game deck"})
+		return
+	}
+
+	// 10. 同时更新内存中的游戏状态
+	gs.Players[0].Hand = model.GetTilesFromIDs(dealerHand)
+	gs.Players[1].Hand = model.GetTilesFromIDs(player1Hand)
+	gs.Players[2].Hand = model.GetTilesFromIDs(player2Hand)
+	gs.DrawPile = model.GetTilesFromIDs(cutStack[stackTop:])
+
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
