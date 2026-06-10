@@ -2,9 +2,12 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
+	"github.com/cwr0401/f3moon/internal/engine"
 	"github.com/cwr0401/f3moon/internal/game"
 	"github.com/cwr0401/f3moon/internal/middleware"
 	"github.com/cwr0401/f3moon/internal/model"
@@ -17,11 +20,12 @@ type RoomHandler struct {
 	manager      *room.Manager
 	gameHandler  *GameHandler
 	hub          *ws.Hub
+	gameRepo     game.Repository
 }
 
 // NewRoomHandler 创建房间处理器
-func NewRoomHandler(manager *room.Manager, gameHandler *GameHandler, hub *ws.Hub) *RoomHandler {
-	return &RoomHandler{manager: manager, gameHandler: gameHandler, hub: hub}
+func NewRoomHandler(manager *room.Manager, gameHandler *GameHandler, hub *ws.Hub, gameRepo game.Repository) *RoomHandler {
+	return &RoomHandler{manager: manager, gameHandler: gameHandler, hub: hub, gameRepo: gameRepo}
 }
 
 // CreateRoom 创建房间
@@ -222,9 +226,32 @@ func (h *RoomHandler) StartGame(c *gin.Context) {
 		return
 	}
 
-	// 创建游戏状态
+	// 创建并保存游戏牌栈记录
+	seed := time.Now().UnixNano()
+	shuffleStack := engine.NewShuffledDeckStack(seed)
+	deck := &game.GameDeckRecord{
+		ID:           uuid.NewString(),
+		RoomID:       roomID,
+		Seed:         seed,
+		ShuffleStack: shuffleStack,
+		CutStack:     nil,
+		StackTop:     0,
+		StackBottom:  111,
+		Shuffled:     true,
+		CutPosition:  0,
+		CutFinished:  false,
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
+	}
+	if err := h.gameRepo.CreateGameDeck(deck); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create game deck"})
+		return
+	}
+
+	// 创建游戏状态，并使用数据库中的牌栈
 	gs := model.NewGameState(roomID, r.Mode)
 	gs.Players = r.ToModelPlayers()
+	gs.DrawPile = model.GetTilesFromIDs(shuffleStack)
 
 	// 创建状态机并启动游戏
 	sm := game.NewStateMachine(gs, h.hub)

@@ -1,5 +1,7 @@
 package model
 
+import "sync"
+
 // TileName 牌面名称
 type TileName string
 
@@ -141,4 +143,275 @@ func IsNumericTile(name TileName) bool {
 // IsJingName 是否为经牌名称
 func IsJingName(name TileName) bool {
 	return name == TileSan || name == TileWu || name == TileQi
+}
+
+// tileMap 单例牌组映射 (只读)
+var tileMap map[uint8]Tile
+var tileMapOnce sync.Once
+
+// initTileMap 按 design/tile_code.md 初始化牌组映射
+func initTileMap() {
+	tileMap = make(map[uint8]Tile)
+
+	// 乙 (0-4): 黑, 前3张无花, 后2张有花
+	for id := 0; id <= 4; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileYi,
+			Color:    ColorBlack,
+			IsFlower: id >= 3,
+			Numeric:  1,
+		}
+	}
+	// 二 (5-9): 黑, 无花
+	for id := 5; id <= 9; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileEr,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  2,
+		}
+	}
+	// 三 (10-14): 红, 前3张无花, 后2张有花
+	for id := 10; id <= 14; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileSan,
+			Color:    ColorRed,
+			IsFlower: id >= 13,
+			Numeric:  3,
+		}
+	}
+	// 四 (15-19): 黑, 无花
+	for id := 15; id <= 19; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileSi,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  4,
+		}
+	}
+	// 五 (20-24): 红, 前3张无花, 后2张有花
+	for id := 20; id <= 24; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileWu,
+			Color:    ColorRed,
+			IsFlower: id >= 23,
+			Numeric:  5,
+		}
+	}
+	// 六 (25-29): 黑, 无花
+	for id := 25; id <= 29; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileLiu,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  6,
+		}
+	}
+	// 七 (30-34): 红, 前3张无花, 后2张有花
+	for id := 30; id <= 34; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileQi,
+			Color:    ColorRed,
+			IsFlower: id >= 33,
+			Numeric:  7,
+		}
+	}
+	// 八 (35-39): 黑, 无花
+	for id := 35; id <= 39; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileBa,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  8,
+		}
+	}
+	// 九 (40-44): 黑, 前3张无花, 后2张有花
+	for id := 40; id <= 44; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileJiu,
+			Color:    ColorBlack,
+			IsFlower: id >= 43,
+			Numeric:  9,
+		}
+	}
+	// 十 (45-49): 黑, 无花
+	for id := 45; id <= 49; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileShi,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  10,
+		}
+	}
+	// 上 (50-54): 红, 无花
+	for id := 50; id <= 54; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileShang,
+			Color:    ColorRed,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 大 (55-59): 红, 无花
+	for id := 55; id <= 59; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileDa,
+			Color:    ColorRed,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 人 (60-64): 红, 无花
+	for id := 60; id <= 64; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileRen,
+			Color:    ColorRed,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 可 (65-69): 红, 无花
+	for id := 65; id <= 69; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileKe,
+			Color:    ColorRed,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 知 (70-74): 红, 无花
+	for id := 70; id <= 74; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileZhi,
+			Color:    ColorRed,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 礼 (75-79): 红, 无花
+	for id := 75; id <= 79; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileLi,
+			Color:    ColorRed,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 孔 (80-84): 黑, 无花
+	for id := 80; id <= 84; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileKong,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 己 (85-89): 黑, 无花
+	for id := 85; id <= 89; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileJi,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 化 (90-94): 黑, 无花
+	for id := 90; id <= 94; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileHua,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 千 (95-99): 黑, 无花
+	for id := 95; id <= 99; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileQian,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 土 (100-104): 黑, 无花
+	for id := 100; id <= 104; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileTu,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 子 (105-109): 黑, 无花
+	for id := 105; id <= 109; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileZi,
+			Color:    ColorBlack,
+			IsFlower: false,
+			Numeric:  0,
+		}
+	}
+	// 别 (110-111): 红, 有花
+	for id := 110; id <= 111; id++ {
+		tileMap[uint8(id)] = Tile{
+			ID:       id,
+			Name:     TileBie,
+			Color:    ColorRed,
+			IsFlower: true,
+			Numeric:  0,
+		}
+	}
+}
+
+// GetTile 通过 ID 获取牌 (只读访问)
+func GetTile(id uint8) *Tile {
+	tileMapOnce.Do(initTileMap)
+	if tile, ok := tileMap[id]; ok {
+		return &tile
+	}
+	return nil
+}
+
+// GetAllTileIDs 返回所有牌的 ID 数组 (0-111)
+func GetAllTileIDs() []uint8 {
+	tileMapOnce.Do(initTileMap)
+	ids := make([]uint8, 0, 112)
+	for id := uint8(0); id < 112; id++ {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// GetTilesFromIDs 通过 ID 数组获取牌对象数组
+func GetTilesFromIDs(ids []uint8) []*Tile {
+	tileMapOnce.Do(initTileMap)
+	tiles := make([]*Tile, 0, len(ids))
+	for _, id := range ids {
+		if tile := GetTile(id); tile != nil {
+			tiles = append(tiles, tile)
+		}
+	}
+	return tiles
 }

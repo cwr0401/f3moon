@@ -61,10 +61,13 @@ func (sm *StateMachine) StartGame() error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// 洗牌
-	deck := engine.NewDeck()
-	engine.Shuffle(deck, sm.rng)
-	sm.game.DrawPile = deck
+	// 如果还没有牌栈，则洗牌（兼容旧代码）
+	if sm.game.DrawPile == nil || len(sm.game.DrawPile) == 0 {
+		deck := engine.NewDeck()
+		engine.Shuffle(deck, sm.rng)
+		sm.game.DrawPile = deck
+	}
+
 	sm.game.Phase = model.PhaseCut
 
 	sm.broadcast.Broadcast(NotifyMessage{
