@@ -36,17 +36,17 @@ export const useGameStore = defineStore('game', () => {
 
   async function cut(position: number) {
     await api.post(`/games/${gameState.value!.id}/cut`, { position })
-    // dealCards runs async on server; poll until phase changes from PhaseDeal
-    const pollInterval = setInterval(async () => {
-      await fetchGame(gameState.value!.id)
-      if (gameState.value?.phase !== GamePhase.PhaseDeal) {
-        clearInterval(pollInterval)
-      }
-    }, 1000)
+    await fetchGame(gameState.value!.id)
+  }
+
+  async function deal() {
+    await api.post(`/games/${gameState.value!.id}/deal`)
+    await fetchGame(gameState.value!.id)
   }
 
   async function tong(tileName: TileName, tongSize: number, skip: boolean) {
     await api.post(`/games/${gameState.value!.id}/tong`, { tile_name: tileName, tong_size: tongSize, skip })
+    await fetchGame(gameState.value!.id)
   }
 
   async function draw() {
@@ -140,7 +140,7 @@ export const useGameStore = defineStore('game', () => {
 
   return {
     gameState, selectedTileId, currentPhase, myPlayer, myHand, myOpenCombs, isMyTurn, isCutPlayer,
-    fetchGame, cut, tong, draw, discard, pair, ganta, win, pass, dangJing,
+    fetchGame, cut, deal, tong, draw, discard, pair, ganta, win, pass, dangJing,
     applyNotify, selectTile, reset,
   }
 })

@@ -103,18 +103,7 @@ func (h *GameHandler) Cut(c *gin.Context) {
 	// 7. 同时更新内存中的游戏状态（转换ID为Tile对象）
 	gs := sm.Game()
 	gs.DrawPile = model.GetTilesFromIDs(cutStack)
-
-	// 8. 触发游戏事件（保持原有逻辑）
-	evt := game.GameEvent{
-		Type:     game.EventCut,
-		PlayerID: c.GetString(middleware.ContextKeyUserID),
-		Data:     game.CutData{Position: req.Position},
-	}
-
-	if err := sm.HandleEvent(evt); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	gs.Phase = model.PhaseDeal // 更新Phase到发牌阶段
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
@@ -150,6 +139,159 @@ func (h *GameHandler) Tong(c *gin.Context) {
 		return
 	}
 
+	// 1. 从数据库获取游戏牌栈记录
+	deck, err := h.gameRepo.GetGameDeckByRoomID(gameID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "game deck not found"})
+		return
+	}
+
+	// 2. 验证是否完成洗牌
+	if !deck.Shuffled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "game not shuffled yet"})
+		return
+	}
+
+	// 3. 验证是否完成切牌
+	if !deck.CutFinished {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "game not cut yet"})
+		return
+	}
+
+	// 4. 验证是否完成发牌
+	if !deck.DealFinished {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "game not dealt yet"})
+		return
+	}
+
+	// 5. 验证是否已完成请统
+	if deck.TongFinished {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tong already finished"})
+		return
+	}
+
+	playerID := c.GetString(middleware.ContextKeyUserID)
+	gs := sm.Game()
+
+	// 6. 验证是否是当前玩家的回合
+	tongOrder := []int{2, 1, 0} // 闲二 -> 闲一 -> 庄家
+	if len(deck.TongOrder) == 3 {
+		tongOrder = []int{int(deck.TongOrder[0]), int(deck.TongOrder[1]), int(deck.TongOrder[2])}
+	}
+	currentIdx := tongOrder[deck.TongCurrent]
+	currentPlayer := gs.Players[currentIdx]
+	if currentPlayer == nil || currentPlayer.ID != playerID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "not your turn"})
+		return
+	}
+
+	// 7. 如果不跳过，验证手牌并操作数据库牌栈
+	if !req.Skip {
+		// 验证统牌大小
+		if req.TongSize != 4 && req.TongSize != 5 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "tong_size must be 4 or 5"})
+			return
+		}
+
+		// 验证牌名
+		if req.TileName == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "tile_name is required"})
+			return
+		}
+
+		// 获取当前玩家的手牌ID数组
+		var playerHand []uint8
+		switch currentIdx {
+		case 0:
+			playerHand = deck.DealerHand
+		case 1:
+			playerHand = deck.Player1Hand
+		case 2:
+			playerHand = deck.Player2Hand
+		}
+
+		// 统计手牌中该牌的数量并构建新手牌（移除统掉的牌）
+		count := 0
+		var newHand []uint8
+		for _, tileID := range playerHand {
+			tile := model.GetTile(tileID)
+			if tile != nil && tile.Name == req.TileName && count < req.TongSize {
+				count++
+				continue // 跳过，不移到新手牌中
+			}
+			newHand = append(newHand, tileID)
+		}
+
+		if count < req.TongSize {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "not enough tiles to tong"})
+			return
+		}
+
+		// 计算需要补充的牌数（统4张补1张，统5张补2张）
+		drawCount := req.TongSize - 3
+		cutStack := deck.CutStack
+		stackBottom := deck.StackBottom
+
+		// 验证栈底有足够的牌
+		availableCards := stackBottom - deck.StackTop + 1
+		if availableCards < drawCount {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "not enough cards in draw pile"})
+			return
+		}
+
+		// 从栈底取出牌
+		var drawnTileIDs []uint8
+		for i := 0; i < drawCount; i++ {
+			drawnTileIDs = append(drawnTileIDs, cutStack[stackBottom])
+			stackBottom--
+		}
+
+		// 将取出的牌加入玩家手牌
+		newHand = append(newHand, drawnTileIDs...)
+
+		// 更新数据库中的手牌
+		switch currentIdx {
+		case 0:
+			deck.DealerHand = newHand
+		case 1:
+			deck.Player1Hand = newHand
+		case 2:
+			deck.Player2Hand = newHand
+		}
+		deck.StackBottom = stackBottom
+	}
+
+	// 8. 更新数据库中的请统状态
+	deck.TongCurrent = deck.TongCurrent + 1
+	if deck.TongCurrent >= 3 {
+		deck.TongFinished = true
+	}
+	// 只有在TongOrder未设置时才设置默认值
+	if len(deck.TongOrder) == 0 {
+		deck.TongOrder = game.Uint8Slice{2, 1, 0}
+	}
+
+	// 同步内存中的游戏状态（从数据库更新）
+	if !req.Skip {
+		gs.Players[0].Hand = model.GetTilesFromIDs(deck.DealerHand)
+		gs.Players[1].Hand = model.GetTilesFromIDs(deck.Player1Hand)
+		gs.Players[2].Hand = model.GetTilesFromIDs(deck.Player2Hand)
+		gs.DrawPile = model.GetTilesFromIDs(deck.CutStack[deck.StackTop : deck.StackBottom+1])
+	} else {
+		// 跳过统牌时也需要确保内存状态与数据库一致
+		gs.Players[0].Hand = model.GetTilesFromIDs(deck.DealerHand)
+		gs.Players[1].Hand = model.GetTilesFromIDs(deck.Player1Hand)
+		gs.Players[2].Hand = model.GetTilesFromIDs(deck.Player2Hand)
+	}
+
+	deck.UpdatedAt = time.Now().UTC()
+
+	if err := h.gameRepo.UpdateGameDeck(deck); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update game deck"})
+		return
+	}
+
+	// 9. 处理事件（持久化后再处理）
 	evtType := game.EventTong
 	if req.Skip {
 		evtType = game.EventPass
@@ -157,7 +299,7 @@ func (h *GameHandler) Tong(c *gin.Context) {
 
 	evt := game.GameEvent{
 		Type:     evtType,
-		PlayerID: c.GetString(middleware.ContextKeyUserID),
+		PlayerID: playerID,
 		Data: game.TongData{
 			TileName: req.TileName,
 			TongSize: req.TongSize,
@@ -168,6 +310,7 @@ func (h *GameHandler) Tong(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 

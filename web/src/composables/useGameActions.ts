@@ -8,6 +8,10 @@ export function useGameActions() {
     return store.cut(position)
   }
 
+  function doDeal() {
+    return store.deal()
+  }
+
   function doTong(tileName: TileName, tongSize: number) {
     return store.tong(tileName, tongSize, false)
   }
@@ -45,5 +49,5 @@ export function useGameActions() {
     return store.dangJing(jing)
   }
 
-  return { doCut, doTong, doTongSkip, doDraw, doDiscard, doPair, doGanta, doWin, doPass, doDangJing }
+  return { doCut, doDeal, doTong, doTongSkip, doDraw, doDiscard, doPair, doGanta, doWin, doPass, doDangJing }
 }

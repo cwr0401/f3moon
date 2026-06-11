@@ -53,6 +53,9 @@ type GameDeckRecord struct {
 	Player2Hand    Uint8Slice `gorm:"type:json" json:"player2_hand"`
 	DealerFinished bool      `gorm:"not null;default:false" json:"dealer_finished"`
 	DealFinished   bool      `gorm:"not null;default:false" json:"deal_finished"`
+	TongFinished   bool      `gorm:"not null;default:false" json:"tong_finished"`
+	TongCurrent    int       `gorm:"not null;default:0" json:"tong_current"`
+	TongOrder      Uint8Slice `gorm:"type:json" json:"tong_order"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -118,6 +121,9 @@ func (r *gormRepository) UpdateGameDeck(deck *GameDeckRecord) error {
 		"player2_hand":    deck.Player2Hand,
 		"dealer_finished": deck.DealerFinished,
 		"deal_finished":   deck.DealFinished,
+		"tong_finished":   deck.TongFinished,
+		"tong_current":    deck.TongCurrent,
+		"tong_order":      deck.TongOrder,
 		"updated_at":      deck.UpdatedAt,
 	})
 	if result.Error != nil {

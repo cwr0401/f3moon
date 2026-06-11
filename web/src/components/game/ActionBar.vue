@@ -7,6 +7,10 @@ import { GamePhase } from '../../types/game'
 const gameStore = useGameStore()
 const actions = useGameActions()
 
+const showDeal = computed(() =>
+  gameStore.currentPhase === GamePhase.PhaseDeal
+)
+
 const showDraw = computed(() =>
   gameStore.currentPhase === GamePhase.PhasePlay && gameStore.isMyTurn && !gameStore.gameState?.last_discard
 )
@@ -30,6 +34,13 @@ const showPass = computed(() =>
 
 <template>
   <div class="flex gap-2 justify-center py-2">
+    <button
+      v-if="showDeal"
+      @click="actions.doDeal()"
+      class="px-4 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors"
+    >
+      发牌
+    </button>
     <button
       v-if="showDraw"
       @click="actions.doDraw()"

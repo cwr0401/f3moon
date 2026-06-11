@@ -381,6 +381,55 @@
                 }
             }
         },
+        "/games/{id}/deal": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "执行发牌流程，给三个玩家发牌",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "游戏"
+                ],
+                "summary": "发牌",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "游戏 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{ \\\"status\\\": \\\"ok\\\" }",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "{ \\\"error\\\": \\\"string\\\" }",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "404": {
+                        "description": "{ \\\"error\\\": \\\"game not found\\\" }",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
         "/games/{id}/discard": {
             "post": {
                 "security": [
@@ -1076,6 +1125,192 @@
                     }
                 }
             }
+        },
+        "/shuffle": {
+            "post": {
+                "description": "生成一副打乱的牌，返回牌 ID 栈和完整牌信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "工具"
+                ],
+                "summary": "洗牌",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "随机种子（可选，默认使用当前时间）",
+                        "name": "seed",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ShuffleResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "handler.ShuffleResponse": {
+            "type": "object",
+            "properties": {
+                "seed": {
+                    "description": "使用的随机种子",
+                    "type": "integer"
+                },
+                "stack": {
+                    "description": "牌 ID 栈（索引 0 为栈顶）",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "stack_bottom": {
+                    "description": "栈底牌 ID",
+                    "type": "integer"
+                },
+                "stack_top": {
+                    "description": "栈顶牌 ID",
+                    "type": "integer"
+                },
+                "tiles": {
+                    "description": "完整牌信息（按栈顺序）",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Tile"
+                    }
+                }
+            }
+        },
+        "model.Tile": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "$ref": "#/definitions/model.TileColor"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_flower": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "$ref": "#/definitions/model.TileName"
+                },
+                "numeric": {
+                    "description": "数字值(仅数字牌有效, 1-10; 文字牌/别=0)",
+                    "type": "integer"
+                }
+            }
+        },
+        "model.TileColor": {
+            "type": "integer",
+            "enum": [
+                0,
+                1
+            ],
+            "x-enum-varnames": [
+                "ColorBlack",
+                "ColorRed"
+            ]
+        },
+        "model.TileName": {
+            "type": "string",
+            "enum": [
+                "乙",
+                "二",
+                "三",
+                "四",
+                "五",
+                "六",
+                "七",
+                "八",
+                "九",
+                "十",
+                "孔",
+                "己",
+                "化",
+                "千",
+                "土",
+                "子",
+                "上",
+                "大",
+                "人",
+                "可",
+                "知",
+                "礼",
+                "别"
+            ],
+            "x-enum-comments": {
+                "TileBa": "8",
+                "TileEr": "2",
+                "TileJiu": "9",
+                "TileLiu": "6",
+                "TileQi": "7",
+                "TileSan": "3",
+                "TileShi": "10",
+                "TileSi": "4",
+                "TileWu": "5",
+                "TileYi": "1"
+            },
+            "x-enum-descriptions": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+            ],
+            "x-enum-varnames": [
+                "TileYi",
+                "TileEr",
+                "TileSan",
+                "TileSi",
+                "TileWu",
+                "TileLiu",
+                "TileQi",
+                "TileBa",
+                "TileJiu",
+                "TileShi",
+                "TileKong",
+                "TileJi",
+                "TileHua",
+                "TileQian",
+                "TileTu",
+                "TileZi",
+                "TileShang",
+                "TileDa",
+                "TileRen",
+                "TileKe",
+                "TileZhi",
+                "TileLi",
+                "TileBie"
+            ]
         }
     },
     "securityDefinitions": {

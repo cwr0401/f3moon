@@ -1,4 +1,134 @@
 basePath: /api/v1
+definitions:
+  handler.ShuffleResponse:
+    properties:
+      seed:
+        description: 使用的随机种子
+        type: integer
+      stack:
+        description: 牌 ID 栈（索引 0 为栈顶）
+        items:
+          type: integer
+        type: array
+      stack_bottom:
+        description: 栈底牌 ID
+        type: integer
+      stack_top:
+        description: 栈顶牌 ID
+        type: integer
+      tiles:
+        description: 完整牌信息（按栈顺序）
+        items:
+          $ref: '#/definitions/model.Tile'
+        type: array
+    type: object
+  model.Tile:
+    properties:
+      color:
+        $ref: '#/definitions/model.TileColor'
+      id:
+        type: integer
+      is_flower:
+        type: boolean
+      name:
+        $ref: '#/definitions/model.TileName'
+      numeric:
+        description: 数字值(仅数字牌有效, 1-10; 文字牌/别=0)
+        type: integer
+    type: object
+  model.TileColor:
+    enum:
+    - 0
+    - 1
+    type: integer
+    x-enum-varnames:
+    - ColorBlack
+    - ColorRed
+  model.TileName:
+    enum:
+    - 乙
+    - 二
+    - 三
+    - 四
+    - 五
+    - 六
+    - 七
+    - 八
+    - 九
+    - 十
+    - 孔
+    - 己
+    - 化
+    - 千
+    - 土
+    - 子
+    - 上
+    - 大
+    - 人
+    - 可
+    - 知
+    - 礼
+    - 别
+    type: string
+    x-enum-comments:
+      TileBa: "8"
+      TileEr: "2"
+      TileJiu: "9"
+      TileLiu: "6"
+      TileQi: "7"
+      TileSan: "3"
+      TileShi: "10"
+      TileSi: "4"
+      TileWu: "5"
+      TileYi: "1"
+    x-enum-descriptions:
+    - "1"
+    - "2"
+    - "3"
+    - "4"
+    - "5"
+    - "6"
+    - "7"
+    - "8"
+    - "9"
+    - "10"
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    x-enum-varnames:
+    - TileYi
+    - TileEr
+    - TileSan
+    - TileSi
+    - TileWu
+    - TileLiu
+    - TileQi
+    - TileBa
+    - TileJiu
+    - TileShi
+    - TileKong
+    - TileJi
+    - TileHua
+    - TileQian
+    - TileTu
+    - TileZi
+    - TileShang
+    - TileDa
+    - TileRen
+    - TileKe
+    - TileZhi
+    - TileLi
+    - TileBie
 host: localhost:8080
 info:
   contact: {}
@@ -245,6 +375,37 @@ paths:
       security:
       - BearerAuth: []
       summary: 选择当经
+      tags:
+      - 游戏
+  /games/{id}/deal:
+    post:
+      consumes:
+      - application/json
+      description: 执行发牌流程，给三个玩家发牌
+      parameters:
+      - description: 游戏 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{ \"status\": \"ok\" }'
+          schema:
+            type: object
+        "400":
+          description: '{ \"error\": \"string\" }'
+          schema:
+            type: object
+        "404":
+          description: '{ \"error\": \"game not found\" }'
+          schema:
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 发牌
       tags:
       - 游戏
   /games/{id}/discard:
@@ -686,6 +847,26 @@ paths:
       summary: 开始游戏
       tags:
       - 房间
+  /shuffle:
+    post:
+      consumes:
+      - application/json
+      description: 生成一副打乱的牌，返回牌 ID 栈和完整牌信息
+      parameters:
+      - description: 随机种子（可选，默认使用当前时间）
+        in: query
+        name: seed
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.ShuffleResponse'
+      summary: 洗牌
+      tags:
+      - 工具
 securityDefinitions:
   BearerAuth:
     in: header
