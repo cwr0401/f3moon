@@ -19,6 +19,7 @@ import (
 	"github.com/cwr0401/f3moon/internal/middleware"
 	"github.com/cwr0401/f3moon/internal/room"
 	"github.com/cwr0401/f3moon/internal/ws"
+	"github.com/cwr0401/f3moon/internal/zone"
 )
 
 // @title 荆楚花牌 API
@@ -37,8 +38,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("初始化数据库失败: %v", err)
 	}
-	if err := db.AutoMigrate(gdb, &auth.User{}, &auth.VerificationToken{}, &room.RoomRecord{}, &room.RoomScore{}, &game.GameDeckRecord{}); err != nil {
+	if err := db.AutoMigrate(gdb, &auth.User{}, &auth.VerificationToken{}, &zone.GameZoneRecord{}, &room.RoomRecord{}, &room.RoomScore{}, &room.UserRoomRecord{}, &game.GameDeckRecord{}); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
+	}
+	if err := db.ApplyForeignKeys(gdb); err != nil {
+		log.Fatalf("应用外键约束失败: %v", err)
 	}
 	log.Println("数据库连接成功")
 
@@ -60,14 +64,27 @@ func main() {
 	authSvc := auth.NewService(repo, mailer, jwtMgr, cfg.AppBaseURL)
 
 	// 初始化组件
+	zoneRepo := zone.NewGORMRepository(gdb)
+	zoneManager := zone.NewManager(zoneRepo)
+	if err := zoneManager.LoadFromDB(); err != nil {
+		log.Fatalf("加载游戏区失败: %v", err)
+	}
+	if err := zoneManager.InitializeDefaultZones(); err != nil {
+		log.Fatalf("初始化默认游戏区失败: %v", err)
+	}
+
 	roomRepo := room.NewGORMRepository(gdb)
-	roomManager := room.NewManager(roomRepo)
+	roomManager := room.NewManager(roomRepo, zoneManager)
+	if err := zoneManager.RebuildRoomCounts(roomRepo.CountActiveRoomsByZone); err != nil {
+		log.Fatalf("重建游戏区房间计数失败: %v", err)
+	}
 	gameRepo := game.NewGORMRepository(gdb)
 	hub := ws.NewHub()
 	authHandler := handler.NewAuthHandler(authSvc)
 	gameHandler := handler.NewGameHandler(gameRepo)
 	shuffleHandler := handler.NewShuffleHandler()
 	roomHandler := handler.NewRoomHandler(roomManager, gameHandler, hub, gameRepo)
+	zoneHandler := handler.NewZoneHandler(zoneManager)
 	wsHandler := handler.NewWSHandler(hub, jwtMgr)
 
 	// 设置Gin
@@ -119,6 +136,16 @@ func main() {
 			// 当前用户
 			protected.GET("/auth/me", authHandler.Me)
 
+			// 游戏区
+			zones := protected.Group("/zones")
+			{
+				zones.GET("", zoneHandler.ListZones)
+				zones.GET("/:id", zoneHandler.GetZone)
+				zones.POST("", zoneHandler.CreateZone)
+				zones.PUT("/:id", zoneHandler.UpdateZone)
+				zones.DELETE("/:id", zoneHandler.DeleteZone)
+			}
+
 			// 房间
 			rooms := protected.Group("/rooms")
 			{
@@ -127,6 +154,7 @@ func main() {
 				rooms.GET("/:id", roomHandler.GetRoom)
 				rooms.POST("/:id/join", roomHandler.JoinRoom)
 				rooms.POST("/:id/leave", roomHandler.LeaveRoom)
+				rooms.POST("/:id/close", roomHandler.CloseRoom)
 				rooms.POST("/:id/ai", roomHandler.AddAIPlayer)
 				rooms.POST("/:id/ready", roomHandler.Ready)
 				rooms.POST("/:id/start", roomHandler.StartGame)

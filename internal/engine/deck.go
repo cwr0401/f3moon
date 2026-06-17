@@ -31,9 +31,22 @@ func Shuffle(tiles []*model.Tile, r *rand.Rand) {
 	})
 }
 
-// CutIDs 切牌: 从 top 位置切牌, 将 top 及以上的牌移到底部
+// MinCutPosition 切牌位置下界 (rules.md:121 严格大于 37)
+const MinCutPosition = 38
+
+// MaxCutPosition 切牌位置上界 (rules.md:121 严格小于 111)
+const MaxCutPosition = 110
+
+// ValidateCutPosition 校验切牌位置是否合法.
+// 规则 rules.md:121: 切牌位置必须 >37 且 <111, 即合法区间 [38, 110].
+func ValidateCutPosition(position int) bool {
+	return position >= MinCutPosition && position <= MaxCutPosition
+}
+
+// CutIDs 切牌: 从 top 位置切牌, 将 top 及以上的牌移到底部.
+// 规则: 仅允许 top ∈ [38, 110]; 超出范围时返回原数组不做修改 (调用方应预先校验).
 func CutIDs(ids []uint8, top int) []uint8 {
-	if top <= 0 || top >= len(ids) {
+	if !ValidateCutPosition(top) || top >= len(ids) {
 		return ids
 	}
 	result := make([]uint8, len(ids))
@@ -42,9 +55,10 @@ func CutIDs(ids []uint8, top int) []uint8 {
 	return result
 }
 
-// Cut 切牌 (保持向后兼容)
+// Cut 切牌 (保持向后兼容).
+// 同样使用 ValidateCutPosition 做边界校验.
 func Cut(tiles []*model.Tile, top int) []*model.Tile {
-	if top <= 0 || top >= len(tiles) {
+	if !ValidateCutPosition(top) || top >= len(tiles) {
 		return tiles
 	}
 	result := make([]*model.Tile, len(tiles))
@@ -53,22 +67,24 @@ func Cut(tiles []*model.Tile, top int) []*model.Tile {
 	return result
 }
 
-// DealIDs 给3个玩家各发25张牌, 剩余37张为公牌 (基于 ID 数组)
+// DealIDs 给3个玩家各发25张牌, 剩余37张为公牌 (基于 ID 数组).
+// 规则 rules.md:131-135: 依次给庄家(0)、闲一(1)、闲二(2)各发1张, 循环25轮 (轮转/round-robin).
+// 与 handler/game.go::Deal 的发牌顺序保持一致, 公牌从索引 75 开始.
 func DealIDs(ids []uint8) (hands [3][]uint8, drawPile []uint8) {
-	for i := 0; i < 25; i++ {
+	for round := 0; round < 25; round++ {
 		for p := 0; p < 3; p++ {
-			hands[p] = append(hands[p], ids[i*3+p])
+			hands[p] = append(hands[p], ids[round*3+p])
 		}
 	}
 	drawPile = ids[75:]
 	return
 }
 
-// Deal 发牌 (保持向后兼容)
+// Deal 发牌 (保持向后兼容). 与 DealIDs 相同的轮转语义.
 func Deal(tiles []*model.Tile) (hands [3][]*model.Tile, drawPile []*model.Tile) {
-	for i := 0; i < 25; i++ {
+	for round := 0; round < 25; round++ {
 		for p := 0; p < 3; p++ {
-			hands[p] = append(hands[p], tiles[i*3+p])
+			hands[p] = append(hands[p], tiles[round*3+p])
 		}
 	}
 	drawPile = tiles[75:]

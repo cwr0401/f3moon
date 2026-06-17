@@ -32,8 +32,13 @@ func (sm *StateMachine) CheckWin() *WinResult {
 	handCombs = append(handCombs, arrangement.Complete...)
 	handCombs = append(handCombs, arrangement.Incomplete...)
 
-	// 计算总胡数
-	totalHu := engine.CalcTotalHu(handCombs, player.OpenCombs, dangJing)
+	// 计算总胡数: 接炮和(点炮和)在最终胡数上做 -1 调整(rules.md:337)
+	var totalHu int
+	if sm.game.WinType == model.WinTypeDianPao {
+		totalHu = engine.CalcTotalHuDianPao(handCombs, player.OpenCombs, dangJing, sm.game.LastDiscard)
+	} else {
+		totalHu = engine.CalcTotalHu(handCombs, player.OpenCombs, dangJing)
+	}
 
 	result := &WinResult{
 		Winner:    sm.game.Winner,

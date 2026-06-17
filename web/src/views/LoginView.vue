@@ -9,20 +9,36 @@ const router = useRouter()
 const isRegister = ref(false)
 const email = ref('')
 const password = ref('')
+const confirmPassword = ref('')
 const nickname = ref('')
 const error = ref('')
 const success = ref('')
 const loading = ref(false)
 
+function switchMode(register: boolean) {
+  isRegister.value = register
+  confirmPassword.value = ''
+  error.value = ''
+  success.value = ''
+}
+
 async function handleSubmit() {
   error.value = ''
   success.value = ''
+
+  if (isRegister.value && password.value !== confirmPassword.value) {
+    error.value = '两次输入的密码不一致'
+    return
+  }
+
   loading.value = true
 
   try {
     if (isRegister.value) {
       await auth.register(email.value, password.value, nickname.value)
       success.value = '注册成功，验证邮件已发送，请查收邮箱'
+      password.value = ''
+      confirmPassword.value = ''
     } else {
       await auth.login(email.value, password.value)
       router.push('/lobby')
@@ -47,13 +63,13 @@ async function handleSubmit() {
       <div class="bg-bg-card rounded-xl p-8 border border-amber-900/30 shadow-2xl">
         <div class="flex mb-6 border-b border-amber-900/30">
           <button
-            @click="isRegister = false"
+            @click="switchMode(false)"
             :class="['flex-1 pb-3 text-center transition-colors', !isRegister ? 'text-accent border-b-2 border-accent' : 'text-gray-400 hover:text-gray-200']"
           >
             登录
           </button>
           <button
-            @click="isRegister = true"
+            @click="switchMode(true)"
             :class="['flex-1 pb-3 text-center transition-colors', isRegister ? 'text-accent border-b-2 border-accent' : 'text-gray-400 hover:text-gray-200']"
           >
             注册
@@ -90,6 +106,17 @@ async function handleSubmit() {
               required
               class="w-full px-4 py-2.5 rounded-lg bg-bg-input border border-amber-900/30 text-gray-100 focus:outline-none focus:ring-2 focus:ring-accent/50"
               placeholder="••••••••"
+            />
+          </div>
+
+          <div v-if="isRegister">
+            <label class="block text-sm text-gray-400 mb-1">确认密码</label>
+            <input
+              v-model="confirmPassword"
+              type="password"
+              required
+              class="w-full px-4 py-2.5 rounded-lg bg-bg-input border border-amber-900/30 text-gray-100 focus:outline-none focus:ring-2 focus:ring-accent/50"
+              placeholder="再次输入密码"
             />
           </div>
 

@@ -18,18 +18,21 @@ const (
 
 // Room 房间
 type Room struct {
-	mu         sync.RWMutex
-	ID         string         `json:"id"`
-	Name       string         `json:"name"`
-	Mode       model.GameMode `json:"mode"`
-	Status     RoomStatus     `json:"status"`
-	Players    [4]*RoomPlayer `json:"players"`
-	Owner      string         `json:"owner"`
-	MaxPlayers int            `json:"max_players"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"`
-	ClosedAt   *time.Time     `json:"closed_at,omitempty"`
-	Scores     map[string]int `json:"scores"`
+	mu           sync.RWMutex
+	ID           string         `json:"id"`
+	ZoneID       string         `json:"zone_id"`
+	Name         string         `json:"name"`
+	Mode         model.GameMode `json:"mode"`
+	Status       RoomStatus     `json:"status"`
+	Players      [4]*RoomPlayer `json:"players"`
+	Owner        string         `json:"owner"`
+	MaxPlayers   int            `json:"max_players"`
+	MaxRounds    int            `json:"max_rounds"`
+	CurrentRound int            `json:"current_round"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	ClosedAt     *time.Time     `json:"closed_at,omitempty"`
+	Scores       map[string]int `json:"scores"`
 }
 
 // RoomPlayer 房间中的玩家
@@ -42,22 +45,28 @@ type RoomPlayer struct {
 }
 
 // NewRoom 创建房间
-func NewRoom(id, name string, mode model.GameMode, ownerID string) *Room {
+func NewRoom(id, zoneID, name string, mode model.GameMode, ownerID string, maxRounds int) *Room {
 	maxPlayers := 4
 	if mode == model.GameMode3Player {
 		maxPlayers = 3
 	}
+	if maxRounds <= 0 {
+		maxRounds = 8 // 默认最大8局
+	}
 	now := time.Now().UTC()
 	return &Room{
-		ID:         id,
-		Name:       name,
-		Mode:       mode,
-		Status:     RoomWaiting,
-		Owner:      ownerID,
-		MaxPlayers: maxPlayers,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-		Scores:     make(map[string]int),
+		ID:           id,
+		ZoneID:       zoneID,
+		Name:         name,
+		Mode:         mode,
+		Status:       RoomWaiting,
+		Owner:        ownerID,
+		MaxPlayers:   maxPlayers,
+		MaxRounds:    maxRounds,
+		CurrentRound: 0,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Scores:       make(map[string]int),
 	}
 }
 

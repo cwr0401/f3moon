@@ -161,6 +161,29 @@ func CalcTotalHu(handCombs []*model.Combination, openCombs []*model.Combination,
 	return total
 }
 
+// CalcTotalHuDianPao 计算点炮和的总胡数.
+// 规则 rules.md:337: 接炮和(点炮和)时, 如果点炮组成的组合是一个单字坎(3 张相同),
+// 则按该坎正常计算胡数后整体 -1 胡; 其他情形与自摸相同.
+// winningTile 为对手打出而被胡的那张牌; 当 winningTile 为 nil 或胡牌组合中
+// 不包含该牌作为坎组件时, 不做扣减.
+func CalcTotalHuDianPao(handCombs []*model.Combination, openCombs []*model.Combination, dangJing model.TileName, winningTile *model.Tile) int {
+	total := CalcTotalHu(handCombs, openCombs, dangJing)
+	if winningTile == nil {
+		return total
+	}
+	for _, comb := range handCombs {
+		if comb == nil || comb.Type != model.CombSingle || len(comb.Tiles) != 3 {
+			continue
+		}
+		for _, t := range comb.Tiles {
+			if t != nil && t.ID == winningTile.ID {
+				return total - 1
+			}
+		}
+	}
+	return total
+}
+
 // CalcPo 计算爬坡数
 // 17-21=1坡, 22-26=2坡, 每5胡增1坡
 func CalcPo(totalHu int) int {

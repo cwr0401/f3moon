@@ -79,10 +79,10 @@ func (h *GameHandler) Cut(c *gin.Context) {
 		return
 	}
 
-	// 4. 验证切牌位置范围
+	// 4. 验证切牌位置范围 (规则: rules.md:121 严格 >37 且 <111, 合法区间 [38, 110])
 	position := req.Position
-	if position < 37 || position > 110 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "cut position out of range [37, 110]"})
+	if !engine.ValidateCutPosition(position) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cut position out of range [38, 110]"})
 		return
 	}
 
@@ -100,10 +100,11 @@ func (h *GameHandler) Cut(c *gin.Context) {
 		return
 	}
 
-	// 7. 同时更新内存中的游戏状态（转换ID为Tile对象）
-	gs := sm.Game()
-	gs.DrawPile = model.GetTilesFromIDs(cutStack)
-	gs.Phase = model.PhaseDeal // 更新Phase到发牌阶段
+	// 7. 同时更新内存中的游戏状态（转换ID为Tile对象, 持有 StateMachine 写锁）
+	sm.WithLock(func(gs *model.GameState) {
+		gs.DrawPile = model.GetTilesFromIDs(cutStack)
+		gs.Phase = model.PhaseDeal // 更新Phase到发牌阶段
+	})
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
@@ -200,15 +201,12 @@ func (h *GameHandler) Tong(c *gin.Context) {
 		}
 
 		// 获取当前玩家的手牌ID数组
-		var playerHand []uint8
-		switch currentIdx {
-		case 0:
-			playerHand = deck.DealerHand
-		case 1:
-			playerHand = deck.Player1Hand
-		case 2:
-			playerHand = deck.Player2Hand
+		playerState := deck.Players.FindByRole(currentIdx)
+		if playerState == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "player not found in deck"})
+			return
 		}
+		playerHand := playerState.Hand
 
 		// 统计手牌中该牌的数量并构建新手牌（移除统掉的牌）
 		count := 0
@@ -250,14 +248,7 @@ func (h *GameHandler) Tong(c *gin.Context) {
 		newHand = append(newHand, drawnTileIDs...)
 
 		// 更新数据库中的手牌
-		switch currentIdx {
-		case 0:
-			deck.DealerHand = newHand
-		case 1:
-			deck.Player1Hand = newHand
-		case 2:
-			deck.Player2Hand = newHand
-		}
+		playerState.Hand = newHand
 		deck.StackBottom = stackBottom
 	}
 
@@ -271,18 +262,18 @@ func (h *GameHandler) Tong(c *gin.Context) {
 		deck.TongOrder = game.Uint8Slice{2, 1, 0}
 	}
 
-	// 同步内存中的游戏状态（从数据库更新）
-	if !req.Skip {
-		gs.Players[0].Hand = model.GetTilesFromIDs(deck.DealerHand)
-		gs.Players[1].Hand = model.GetTilesFromIDs(deck.Player1Hand)
-		gs.Players[2].Hand = model.GetTilesFromIDs(deck.Player2Hand)
-		gs.DrawPile = model.GetTilesFromIDs(deck.CutStack[deck.StackTop : deck.StackBottom+1])
-	} else {
-		// 跳过统牌时也需要确保内存状态与数据库一致
-		gs.Players[0].Hand = model.GetTilesFromIDs(deck.DealerHand)
-		gs.Players[1].Hand = model.GetTilesFromIDs(deck.Player1Hand)
-		gs.Players[2].Hand = model.GetTilesFromIDs(deck.Player2Hand)
-	}
+	// 同步内存中的游戏状态（从数据库更新, 持有 StateMachine 写锁）
+	sm.WithLock(func(gs *model.GameState) {
+		for i := 0; i < 3; i++ {
+			ps := deck.Players.FindByRole(i)
+			if ps != nil && gs.Players[i] != nil {
+				gs.Players[i].Hand = model.GetTilesFromIDs(ps.Hand)
+			}
+		}
+		if !req.Skip {
+			gs.DrawPile = model.GetTilesFromIDs(deck.CutStack[deck.StackTop : deck.StackBottom+1])
+		}
+	})
 
 	deck.UpdatedAt = time.Now().UTC()
 
@@ -610,6 +601,13 @@ func (h *GameHandler) Deal(c *gin.Context) {
 		return
 	}
 
+	gs := sm.Game()
+	userID := c.GetString(middleware.ContextKeyUserID)
+	if len(gs.Players) == 0 || gs.Players[0] == nil || gs.Players[0].ID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only dealer can deal"})
+		return
+	}
+
 	// 5. 从切牌栈数据构建栈
 	cutStack := deck.CutStack
 	stackTop := deck.StackTop
@@ -632,25 +630,19 @@ func (h *GameHandler) Deal(c *gin.Context) {
 	dealerHand = append(dealerHand, cutStack[stackTop])
 	stackTop++
 
-	// 8. 从游戏状态获取玩家ID
-	gs := sm.Game()
-	var dealerID, player1ID, player2ID string
+	// 8. 从游戏状态获取玩家ID并构建玩家状态
+	deck.Players = make(game.PlayerDeckStates, 0, 3)
 	if len(gs.Players) >= 3 {
-		dealerID = gs.Players[0].ID
-		player1ID = gs.Players[1].ID
-		player2ID = gs.Players[2].ID
+		deck.Players = append(deck.Players,
+			game.PlayerDeckState{ID: gs.Players[0].ID, Role: 0, Hand: dealerHand, Finished: true},
+			game.PlayerDeckState{ID: gs.Players[1].ID, Role: 1, Hand: player1Hand, Finished: true},
+			game.PlayerDeckState{ID: gs.Players[2].ID, Role: 2, Hand: player2Hand, Finished: true},
+		)
 	}
 
 	// 9. 更新数据库记录
 	deck.StackTop = stackTop
 	deck.StackBottom = len(cutStack) - 1
-	deck.DealerID = dealerID
-	deck.Player1ID = player1ID
-	deck.Player2ID = player2ID
-	deck.DealerHand = dealerHand
-	deck.Player1Hand = player1Hand
-	deck.Player2Hand = player2Hand
-	deck.DealerFinished = true
 	deck.DealFinished = true
 	deck.UpdatedAt = time.Now().UTC()
 
@@ -659,11 +651,13 @@ func (h *GameHandler) Deal(c *gin.Context) {
 		return
 	}
 
-	// 10. 同时更新内存中的游戏状态
-	gs.Players[0].Hand = model.GetTilesFromIDs(dealerHand)
-	gs.Players[1].Hand = model.GetTilesFromIDs(player1Hand)
-	gs.Players[2].Hand = model.GetTilesFromIDs(player2Hand)
-	gs.DrawPile = model.GetTilesFromIDs(cutStack[stackTop:])
+	// 10. 同时更新内存中的游戏状态(持有 StateMachine 写锁)
+	sm.WithLock(func(gs *model.GameState) {
+		gs.Players[0].Hand = model.GetTilesFromIDs(dealerHand)
+		gs.Players[1].Hand = model.GetTilesFromIDs(player1Hand)
+		gs.Players[2].Hand = model.GetTilesFromIDs(player2Hand)
+		gs.DrawPile = model.GetTilesFromIDs(cutStack[stackTop:])
+	})
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

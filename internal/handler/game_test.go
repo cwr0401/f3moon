@@ -192,6 +192,8 @@ func TestDealCards(t *testing.T) {
 	repo.deck.Shuffled = true
 	repo.deck.CutFinished = true
 	repo.deck.CutPosition = 73
+	gs := sm.Game()
+	gs.Players[0].ID = "test-user-1" // 设置当前用户为庄家
 	gameHandler.RegisterGame(roomID, sm)
 
 	// 测试发牌接口
@@ -215,14 +217,17 @@ func TestDealCards(t *testing.T) {
 	if !repo.deck.DealFinished {
 		t.Error("expected deal_finished to be true")
 	}
-	if len(repo.deck.DealerHand) != 26 {
-		t.Errorf("expected dealer hand len 26, got %d", len(repo.deck.DealerHand))
+	dealerState := repo.deck.Players.FindByRole(0)
+	if dealerState == nil || len(dealerState.Hand) != 26 {
+		t.Errorf("expected dealer hand len 26, got %v", dealerState)
 	}
-	if len(repo.deck.Player1Hand) != 25 {
-		t.Errorf("expected player1 hand len 25, got %d", len(repo.deck.Player1Hand))
+	player1State := repo.deck.Players.FindByRole(1)
+	if player1State == nil || len(player1State.Hand) != 25 {
+		t.Errorf("expected player1 hand len 25, got %v", player1State)
 	}
-	if len(repo.deck.Player2Hand) != 25 {
-		t.Errorf("expected player2 hand len 25, got %d", len(repo.deck.Player2Hand))
+	player2State := repo.deck.Players.FindByRole(2)
+	if player2State == nil || len(player2State.Hand) != 25 {
+		t.Errorf("expected player2 hand len 25, got %v", player2State)
 	}
 }
 
@@ -261,15 +266,20 @@ func TestTong_Pass(t *testing.T) {
 	deck.DealFinished = true
 
 	// 发牌 - 给玩家一些手牌
-	repo.deck.DealerHand = make([]uint8, 26)
-	repo.deck.Player1Hand = make([]uint8, 25)
-	repo.deck.Player2Hand = make([]uint8, 25)
+	dealerHand := make([]uint8, 26)
+	player1Hand := make([]uint8, 25)
+	player2Hand := make([]uint8, 25)
 	for i := 0; i < 26; i++ {
-		repo.deck.DealerHand[i] = uint8(i)
+		dealerHand[i] = uint8(i)
 	}
 	for i := 0; i < 25; i++ {
-		repo.deck.Player1Hand[i] = uint8(i + 26)
-		repo.deck.Player2Hand[i] = uint8(i + 51)
+		player1Hand[i] = uint8(i + 26)
+		player2Hand[i] = uint8(i + 51)
+	}
+	repo.deck.Players = game.PlayerDeckStates{
+		{ID: "player-0", Role: 0, Hand: dealerHand, Finished: true},
+		{ID: "player-1", Role: 1, Hand: player1Hand, Finished: true},
+		{ID: "player-2", Role: 2, Hand: player2Hand, Finished: true},
 	}
 	repo.deck.StackTop = 76
 	repo.deck.StackBottom = 111
@@ -278,9 +288,9 @@ func TestTong_Pass(t *testing.T) {
 	gameHandler.RegisterGame(roomID, sm)
 	gs := sm.Game()
 	gs.Phase = model.PhaseTongAsk // 设置正确的Phase
-	gs.Players[0].Hand = model.GetTilesFromIDs(repo.deck.DealerHand)
-	gs.Players[1].Hand = model.GetTilesFromIDs(repo.deck.Player1Hand)
-	gs.Players[2].Hand = model.GetTilesFromIDs(repo.deck.Player2Hand)
+	gs.Players[0].Hand = model.GetTilesFromIDs(dealerHand)
+	gs.Players[1].Hand = model.GetTilesFromIDs(player1Hand)
+	gs.Players[2].Hand = model.GetTilesFromIDs(player2Hand)
 	gs.Players[2].ID = "test-user-1" // 让当前用户是闲家2
 	gs.DrawPile = model.GetTilesFromIDs(repo.deck.CutStack[repo.deck.StackTop : repo.deck.StackBottom+1])
 
@@ -313,9 +323,11 @@ func TestTong_InvalidTongSize(t *testing.T) {
 	repo.deck.Shuffled = true
 	repo.deck.CutFinished = true
 	repo.deck.DealFinished = true
-	repo.deck.DealerHand = make([]uint8, 26)
-	repo.deck.Player1Hand = make([]uint8, 25)
-	repo.deck.Player2Hand = make([]uint8, 25)
+	repo.deck.Players = game.PlayerDeckStates{
+		{ID: "player-0", Role: 0, Hand: make([]uint8, 26), Finished: true},
+		{ID: "player-1", Role: 1, Hand: make([]uint8, 25), Finished: true},
+		{ID: "player-2", Role: 2, Hand: make([]uint8, 25), Finished: true},
+	}
 
 	gameHandler.RegisterGame(roomID, sm)
 	gs := sm.Game()
@@ -376,9 +388,11 @@ func TestTong_NotYourTurn(t *testing.T) {
 	repo.deck.Shuffled = true
 	repo.deck.CutFinished = true
 	repo.deck.DealFinished = true
-	repo.deck.DealerHand = make([]uint8, 26)
-	repo.deck.Player1Hand = make([]uint8, 25)
-	repo.deck.Player2Hand = make([]uint8, 25)
+	repo.deck.Players = game.PlayerDeckStates{
+		{ID: "player-0", Role: 0, Hand: make([]uint8, 26), Finished: true},
+		{ID: "player-1", Role: 1, Hand: make([]uint8, 25), Finished: true},
+		{ID: "player-2", Role: 2, Hand: make([]uint8, 25), Finished: true},
+	}
 
 	gameHandler.RegisterGame(roomID, sm)
 	gs := sm.Game()

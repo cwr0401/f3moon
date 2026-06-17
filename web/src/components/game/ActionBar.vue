@@ -2,13 +2,13 @@
 import { computed } from 'vue'
 import { useGameStore } from '../../stores/game'
 import { useGameActions } from '../../composables/useGameActions'
-import { GamePhase } from '../../types/game'
+import { GamePhase, PlayerRole } from '../../types/game'
 
 const gameStore = useGameStore()
 const actions = useGameActions()
 
 const showDeal = computed(() =>
-  gameStore.currentPhase === GamePhase.PhaseDeal
+  gameStore.currentPhase === GamePhase.PhaseDeal && gameStore.myPlayer?.role === PlayerRole.RoleDealer
 )
 
 const showDraw = computed(() =>

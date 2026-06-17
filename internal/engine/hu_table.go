@@ -41,7 +41,8 @@ var JingHuTable = map[JingKey]HuPair{
 	{Size: 4, Flower: 2, Bie: 2}: {Dang: 48, BuDang: 24},  // 2花+2别
 
 	// ===== 五张统(5张) =====
-	{Size: 5, Flower: 0, Bie: 0}: {Dang: 40, BuDang: 20},  // 5白经(理论值)
+	// 注: {Size:5, Flower:0, Bie:0} (5白经) 物理上不可能, 同名经牌仅 3 张白色 + 2 张花经,
+	//     无法组成 5 张全白经五张统; 已删除该不可达条目.
 	{Size: 5, Flower: 2, Bie: 0}: {Dang: 56, BuDang: 28},  // 3白+2花
 	{Size: 5, Flower: 0, Bie: 2}: {Dang: 56, BuDang: 28},  // 3白+2别
 	{Size: 5, Flower: 1, Bie: 1}: {Dang: 56, BuDang: 28},  // 3白+1花+1别

@@ -17,12 +17,22 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   await roomStore.fetchRoom(roomId)
-  pollTimer = setInterval(() => roomStore.fetchRoom(roomId), 3000)
+  redirectToGameIfPlaying()
+  pollTimer = setInterval(async () => {
+    await roomStore.fetchRoom(roomId)
+    redirectToGameIfPlaying()
+  }, 3000)
 })
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
 })
+
+function redirectToGameIfPlaying() {
+  if (roomStore.currentRoom?.status === RoomStatus.RoomPlaying) {
+    router.push(`/game/${roomId}`)
+  }
+}
 
 async function handleAddAI() {
   await roomStore.addAI(roomId)
@@ -32,6 +42,11 @@ async function handleAddAI() {
 async function handleLeave() {
   await roomStore.leaveRoom(roomId)
   roomStore.clearCurrentRoom()
+  router.push('/lobby')
+}
+
+async function handleClose() {
+  await roomStore.closeRoom(roomId)
   router.push('/lobby')
 }
 
@@ -110,10 +125,18 @@ function amIReady(): boolean {
         开始游戏
       </button>
       <button
+        v-if="!isOwner() && roomStore.currentRoom.status === RoomStatus.RoomWaiting"
         @click="handleLeave"
         class="px-5 py-2.5 rounded-lg bg-red-900/40 border border-red-700/40 hover:bg-red-900/60 transition-colors"
       >
         离开房间
+      </button>
+      <button
+        v-if="isOwner() && roomStore.currentRoom.status === RoomStatus.RoomWaiting"
+        @click="handleClose"
+        class="px-5 py-2.5 rounded-lg bg-red-900/40 border border-red-700/40 hover:bg-red-900/60 transition-colors"
+      >
+        关闭房间
       </button>
     </div>
   </div>

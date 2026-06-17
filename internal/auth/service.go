@@ -25,13 +25,15 @@ var (
 	// ErrInvalidEmail 邮箱格式不正确
 	ErrInvalidEmail = errors.New("invalid email format")
 	// ErrWeakPassword 密码不符合强度要求
-	ErrWeakPassword = errors.New("password must be at least 8 characters and contain letters and digits")
+	ErrWeakPassword = errors.New("password must be at least 8 characters and contain 3 of: uppercase, lowercase, digit, special character")
 	// ErrTokenExpired 验证 token 已过期
 	ErrTokenExpired = errors.New("token expired")
 	// ErrTokenUsed 验证 token 已被使用
 	ErrTokenUsed = errors.New("token already used")
 	// ErrResendThrottled 重发过于频繁
 	ErrResendThrottled = errors.New("resend throttled, please wait")
+	// ErrWrongPassword 原密码错误
+	ErrWrongPassword = errors.New("current password is incorrect")
 )
 
 const (

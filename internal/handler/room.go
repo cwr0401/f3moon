@@ -35,38 +35,40 @@ func NewRoomHandler(manager *room.Manager, gameHandler *GameHandler, hub *ws.Hub
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param body body object true "房间信息" example({"name":"花牌局","mode":0})
+// @Param body body object true "房间信息" example({"zone_id":"uuid","name":"花牌局","mode":0,"max_rounds":8})
 // @Success 200 {object} object "{ \"room_id\": \"string\", \"room\": {} }"
 // @Failure 400 {object} object "{ \"error\": \"string\" }"
 // @Router /rooms [post]
 func (h *RoomHandler) CreateRoom(c *gin.Context) {
 	userID := c.GetString(middleware.ContextKeyUserID)
 	var req struct {
-		Name string         `json:"name" binding:"required"`
-		Mode model.GameMode `json:"mode"`
+		ZoneID    string         `json:"zone_id" binding:"required"`
+		Name      string         `json:"name" binding:"required"`
+		Mode      model.GameMode `json:"mode"`
+		MaxRounds int            `json:"max_rounds"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	r, err := h.manager.CreateRoom(req.Name, req.Mode, userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+	if req.MaxRounds <= 0 {
+		req.MaxRounds = 8
 	}
+
 	player := &room.RoomPlayer{
 		ID:   userID,
 		Name: c.GetString(middleware.ContextKeyNickname),
 	}
-	if _, err := h.manager.JoinRoom(r.ID, player); err != nil {
+	joinedRoom, err := h.manager.CreateRoomAndJoin(req.ZoneID, req.Name, req.Mode, player, req.MaxRounds)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"room_id": r.ID,
-		"room":    r,
+		"room_id": joinedRoom.ID,
+		"room":    joinedRoom,
 	})
 }
 
@@ -92,14 +94,21 @@ func (h *RoomHandler) GetRoom(c *gin.Context) {
 
 // ListRooms 列出所有房间
 // @Summary 列出所有房间
-// @Description 获取所有游戏房间列表
+// @Description 获取所有游戏房间列表，可按游戏区筛选
 // @Tags 房间
 // @Produce json
 // @Security BearerAuth
+// @Param zone_id query string false "游戏区 ID，可选，不传则列出所有房间"
 // @Success 200 {object} object "{ \"rooms\": [] }"
 // @Router /rooms [get]
 func (h *RoomHandler) ListRooms(c *gin.Context) {
-	rooms := h.manager.ListRooms()
+	zoneID := c.Query("zone_id")
+	var rooms []*room.Room
+	if zoneID != "" {
+		rooms = h.manager.ListRoomsByZone(zoneID)
+	} else {
+		rooms = h.manager.ListRooms()
+	}
 	c.JSON(http.StatusOK, gin.H{"rooms": rooms})
 }
 
@@ -144,6 +153,27 @@ func (h *RoomHandler) LeaveRoom(c *gin.Context) {
 	userID := c.GetString(middleware.ContextKeyUserID)
 
 	if err := h.manager.LeaveRoom(roomID, userID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// CloseRoom 关闭房间
+// @Summary 关闭房间
+// @Description 房主关闭房间，只有在没有游戏进行时才能关闭
+// @Tags 房间
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "房间 ID"
+// @Success 200 {object} object "{ \"status\": \"ok\" }"
+// @Failure 400 {object} object "{ \"error\": \"string\" }"
+// @Router /rooms/{id}/close [post]
+func (h *RoomHandler) CloseRoom(c *gin.Context) {
+	roomID := c.Param("id")
+	userID := c.GetString(middleware.ContextKeyUserID)
+
+	if err := h.manager.CloseRoom(roomID, userID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

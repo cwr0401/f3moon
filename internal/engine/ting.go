@@ -13,6 +13,15 @@ type TingResult struct {
 }
 
 // DetectTing 检测手牌是否听牌
+//
+// 关于"别"字替换:
+//   - 在 BestArrangement / Combination.ResolveName 中, 别可分别充当花三/花五/花七.
+//   - 因此只要不完整组合的某一槽位需要 三/五/七 这一花经位, 都会被列入听字.
+//   - 计算胡数时再按是否落在 dangJing 区分 当经/不当经.
+//
+// findCompletions 与 findCompletionsFromSingle 通过 IsJingName 判定经位,
+// 已覆盖文字组合(孔乙己/化三千/七十土) 与数字组合(*三*, *五*, *七*) 中的所有花经位置;
+// 不需要为别字单独枚举.
 func DetectTing(hand []*model.Tile, openCombs []*model.Combination, dangJing model.TileName) []*TingResult {
 	arrangements := ArrangeTiles(hand, dangJing)
 	var results []*TingResult

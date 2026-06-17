@@ -2,6 +2,8 @@ package auth
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -27,7 +29,7 @@ func (r *memoryRepo) CreateUser(user *User) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.byMail[user.Email]; ok {
-		return errors.New("duplicate email")
+		return ErrEmailTaken
 	}
 	r.users[user.ID] = user
 	r.byMail[user.Email] = user
@@ -300,4 +302,185 @@ func extractTokenFromURL(rawURL string) string {
 		}
 	}
 	return ""
+}
+
+func TestRegister_PasswordEdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		pwd  string
+		want error
+	}{
+		{"exact 8 chars", "Pass1234", nil},
+		{"7 chars", "Pass123", ErrWeakPassword},
+		{"only 2 types: upper+lower", "Password", ErrWeakPassword},
+		{"only 2 types: upper+digit", "PASS1234", nil}, // has letter and digit
+		{"only 2 types: lower+digit", "pass1234", nil}, // has letter and digit
+		{"3 types: upper+lower+digit", "Pass1234", nil},
+		{"3 types: upper+lower+special", "PassWord!", ErrWeakPassword}, // no digit
+		{"3 types: upper+digit+special", "PASS123!", nil}, // has letter and digit
+		{"3 types: lower+digit+special", "pass123!", nil}, // has letter and digit
+		{"all 4 types", "Pass123!", nil},
+		{"empty password", "", ErrWeakPassword},
+		{"all spaces", "        ", ErrWeakPassword},
+		{"unicode chars", "Pass123好", nil},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, _, _ := newTestService()
+			email := fmt.Sprintf("test%d@b.com", i)
+			_, err := svc.Register(RegisterInput{Email: email, Password: tt.pwd})
+			if tt.want == nil {
+				if err != nil {
+					t.Errorf("err = %v, want nil", err)
+				}
+			} else {
+				if !errors.Is(err, tt.want) {
+					t.Errorf("err = %v, want %v", err, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestRegister_EmailEdgeCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		email string
+		want  error
+	}{
+		{"empty", "", ErrInvalidEmail},
+		{"no @", "test.com", ErrInvalidEmail},
+		{"no domain", "test@", ErrInvalidEmail},
+		{"no local", "@test.com", ErrInvalidEmail},
+		{"double dots", "test..test@test.com", nil}, // regex allows this
+		{"dot at start", ".test@test.com", nil},     // regex allows this
+		{"dot at end", "test.@test.com", nil},       // regex allows this
+		{"valid with +", "test+tag@test.com", nil},
+		{"valid with hyphen", "test-name@test.com", nil},
+		{"valid with underscore", "test_name@test.com", nil},
+		{"valid mixed case", "Test@Test.Com", nil},
+		{"valid long local", strings.Repeat("a", 64) + "@test.com", nil},
+		{"valid long domain", "test@" + strings.Repeat("a", 63) + ".com", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, _, _ := newTestService()
+			_, err := svc.Register(RegisterInput{Email: tt.email, Password: "Pass1234"})
+			if tt.want == nil {
+				if err != nil {
+					t.Errorf("err = %v, want nil", err)
+				}
+			} else {
+				if !errors.Is(err, tt.want) {
+					t.Errorf("err = %v, want %v", err, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestRegister_ConcurrentDuplicate(t *testing.T) {
+	svc, _, _ := newTestService()
+	const goroutines = 10
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			_, err := svc.Register(RegisterInput{
+				Email:    "concurrent@test.com",
+				Password: "Pass1234",
+				Nickname: fmt.Sprintf("user%d", idx),
+			})
+			errs[idx] = err
+		}(i)
+	}
+
+	wg.Wait()
+
+	successCount := 0
+	takenCount := 0
+	for _, err := range errs {
+		if err == nil {
+			successCount++
+		} else if errors.Is(err, ErrEmailTaken) {
+			takenCount++
+		} else {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}
+
+	if successCount != 1 {
+		t.Errorf("successCount = %d, want 1", successCount)
+	}
+	if takenCount != goroutines-1 {
+		t.Errorf("takenCount = %d, want %d", takenCount, goroutines-1)
+	}
+}
+
+func TestResendVerification_Concurrent(t *testing.T) {
+	svc, repo, _ := newTestService()
+	result, _ := svc.Register(RegisterInput{Email: "concurrent-resend@test.com", Password: "Pass1234"})
+	_ = repo.MarkUserVerified(result.UserID)
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			err := svc.ResendVerification("concurrent-resend@test.com")
+			errs[idx] = err
+		}(i)
+	}
+
+	wg.Wait()
+
+	throttleCount := 0
+	for _, err := range errs {
+		if errors.Is(err, ErrResendThrottled) {
+			throttleCount++
+		}
+	}
+	t.Logf("throttleCount = %d/%d", throttleCount, goroutines)
+}
+
+func TestVerifyEmail_ConcurrentClaim(t *testing.T) {
+	svc, _, mailer := newTestService()
+	_, _ = svc.Register(RegisterInput{Email: "concurrent-verify@test.com", Password: "Pass1234"})
+	token := extractTokenFromURL(mailer.lastURL)
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	successCount := 0
+	usedCount := 0
+	var mu sync.Mutex
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := svc.VerifyEmail(token)
+			mu.Lock()
+			defer mu.Unlock()
+			if err == nil {
+				successCount++
+			} else if errors.Is(err, ErrTokenUsed) {
+				usedCount++
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if successCount != 1 {
+		t.Errorf("successCount = %d, want 1", successCount)
+	}
+	if usedCount != goroutines-1 {
+		t.Errorf("usedCount = %d, want %d", usedCount, goroutines-1)
+	}
 }

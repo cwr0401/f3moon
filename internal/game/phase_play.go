@@ -130,6 +130,18 @@ func (sm *StateMachine) handlePair(evt GameEvent) error {
 		return nil
 	}
 
+	// 优先级: 和 > 碰. 如果有任何其他玩家可以接炮和, 则拒绝当前的碰牌请求.
+	// (rules.md 中和点炮高于一切; 由前端按优先顺序询问, 此处兜底)
+	for i, other := range sm.game.Players {
+		if other == nil || i == sm.game.LastDiscarder {
+			continue
+		}
+		if engine.CheckDiscardWin(other.Hand, discardTile, other.OpenCombs, other.DangJing) {
+			// 还有玩家可和, 不允许碰
+			return nil
+		}
+	}
+
 	// 从手牌中取出与打出的牌同名的牌
 	var pairTiles []*model.Tile
 	pairTiles = append(pairTiles, discardTile) // 打出的牌
@@ -268,7 +280,7 @@ func (sm *StateMachine) handleGanta(evt GameEvent) error {
 	return nil
 }
 
-// handleWin 处理和牌
+// handleWin 处理和牌(自摸 / 接炮和)
 func (sm *StateMachine) handleWin(evt GameEvent) error {
 	playerIdx := sm.game.PlayerIndexByID(evt.PlayerID)
 	if playerIdx < 0 {
@@ -277,13 +289,32 @@ func (sm *StateMachine) handleWin(evt GameEvent) error {
 
 	player := sm.game.Players[playerIdx]
 
-	// 验证和牌
-	if !engine.CheckSelfWin(player.Hand, player.OpenCombs, player.DangJing) {
-		return nil
+	// 判定: 若上一张出牌存在且来自其他玩家, 则为接炮和(rules.md:337);
+	// 否则按自摸处理.
+	discardTile := sm.game.LastDiscard
+	isDianPao := discardTile != nil && sm.game.LastDiscarder >= 0 && sm.game.LastDiscarder != playerIdx
+
+	if isDianPao {
+		// 接炮和: 把出牌临时加入手牌后验证
+		if !engine.CheckDiscardWin(player.Hand, discardTile, player.OpenCombs, player.DangJing) {
+			return nil
+		}
+		// 把胡牌实际并入手牌, 由 CheckWin 阶段统一计算胡数
+		player.AddTileToHand(discardTile)
+		// 从出牌区移除已被胡走的那张
+		if len(sm.game.DiscardPile) > 0 {
+			sm.game.DiscardPile = sm.game.DiscardPile[:len(sm.game.DiscardPile)-1]
+		}
+		sm.game.WinType = model.WinTypeDianPao
+	} else {
+		// 自摸
+		if !engine.CheckSelfWin(player.Hand, player.OpenCombs, player.DangJing) {
+			return nil
+		}
+		sm.game.WinType = model.WinTypeZiMo
 	}
 
 	sm.game.Winner = playerIdx
-	sm.game.WinType = model.WinTypeZiMo
 	sm.game.Phase = model.PhaseCheck
 
 	sm.broadcast.Broadcast(NotifyMessage{
@@ -291,7 +322,7 @@ func (sm *StateMachine) handleWin(evt GameEvent) error {
 		GameID: sm.game.ID,
 		Data: map[string]interface{}{
 			"winner":   playerIdx,
-			"win_type": model.WinTypeZiMo,
+			"win_type": sm.game.WinType,
 		},
 	})
 
@@ -406,6 +437,11 @@ func (sm *StateMachine) advanceTurn() {
 }
 
 // handleHaiDi 处理海底捞月
+// 规则: 当公牌仅剩 3 张时进入海底捞月. 这 3 张依次按 LastDiscarder 之后
+// 的座次发给 3 名玩家(每人各 1 张); 任何一人摸到即和(海底捞月).
+// 即使第一位玩家自摸, 也要先把当前 3 张全部发完吗?
+// 实现: 一旦发现自摸, 立即结束发牌进入查验阶段; 若 3 张全部发完仍无人和,
+// 则黄庄.
 func (sm *StateMachine) handleHaiDi() {
 	// 停止碰牌、统牌、赶塔
 	// 剩余3张牌按顺序分发给3个玩家

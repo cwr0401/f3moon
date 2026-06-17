@@ -26,12 +26,12 @@ async function handleCut() {
         <input
           v-model.number="position"
           type="range"
-          min="37"
+          min="38"
           max="110"
           class="w-full accent-amber-500"
         />
         <div class="flex justify-between text-xs text-gray-500 mt-1">
-          <span>37</span>
+          <span>38</span>
           <span class="text-accent font-bold text-sm">{{ position }}</span>
           <span>110</span>
         </div>

@@ -8,15 +8,21 @@ export const useRoomStore = defineStore('room', () => {
   const rooms = ref<Room[]>([])
   const currentRoom = ref<Room | null>(null)
 
-  async function fetchRooms() {
-    const { data } = await api.get('/rooms')
+  async function fetchRooms(zoneId?: string) {
+    const url = zoneId ? `/rooms?zone_id=${zoneId}` : '/rooms'
+    const { data } = await api.get(url)
     rooms.value = data.rooms ?? []
   }
 
-  async function createRoom(name: string, mode: GameMode) {
-    const { data } = await api.post('/rooms', { name, mode })
+  async function createRoom(zoneId: string, name: string, mode: GameMode, maxRounds: number = 8) {
+    const { data } = await api.post('/rooms', { zone_id: zoneId, name, mode, max_rounds: maxRounds })
     currentRoom.value = data.room
     return data.room_id as string
+  }
+
+  async function closeRoom(roomId: string) {
+    await api.post(`/rooms/${roomId}/close`)
+    currentRoom.value = null
   }
 
   async function fetchRoom(roomId: string) {
@@ -52,5 +58,5 @@ export const useRoomStore = defineStore('room', () => {
     currentRoom.value = null
   }
 
-  return { rooms, currentRoom, fetchRooms, createRoom, fetchRoom, joinRoom, leaveRoom, addAI, ready, startGame, clearCurrentRoom }
+  return { rooms, currentRoom, fetchRooms, createRoom, fetchRoom, joinRoom, leaveRoom, addAI, ready, startGame, clearCurrentRoom, closeRoom }
 })

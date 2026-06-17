@@ -19,10 +19,13 @@ export interface RoomPlayer {
 /** Room — mirrors room.Room */
 export interface Room {
   id: string
+  zone_id: string
   name: string
   mode: GameMode
   status: RoomStatus
   players: (RoomPlayer | null)[]
   owner: string
   max_players: number
+  max_rounds: number
+  current_round: number
 }

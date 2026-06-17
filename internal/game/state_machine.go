@@ -34,6 +34,18 @@ func (sm *StateMachine) Game() *model.GameState {
 	return sm.game
 }
 
+// WithLock 在持有写锁的情况下执行 fn, 用于 handler 等外部模块直接修改
+// GameState 的场景, 避免与状态机并发推进时出现竞态.
+//
+// 调用方应只在 fn 中执行内存操作, 不要进行 I/O 或长耗时调用,
+// 也不要在 fn 内部再次调用任何会上锁的状态机方法(包括 HandleEvent, Game),
+// 否则会死锁.
+func (sm *StateMachine) WithLock(fn func(*model.GameState)) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	fn(sm.game)
+}
+
 // HandleEvent 处理游戏事件
 func (sm *StateMachine) HandleEvent(evt GameEvent) error {
 	sm.mu.Lock()
@@ -99,8 +111,9 @@ func (sm *StateMachine) handleCut(evt GameEvent) error {
 	}
 
 	position := data.Position
-	if position < 37 || position > 110 {
-		return errors.New("cut position out of range [37, 110]")
+	// 规则: rules.md:121 切牌位置必须 >37 且 <111, 即合法范围 [38, 110]
+	if !engine.ValidateCutPosition(position) {
+		return errors.New("cut position out of range [38, 110]")
 	}
 
 	// 切牌

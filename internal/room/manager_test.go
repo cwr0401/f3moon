@@ -1,27 +1,37 @@
 package room
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/cwr0401/f3moon/internal/model"
+	"github.com/cwr0401/f3moon/internal/zone"
 )
 
 type recordingRepository struct {
-	created []*Room
-	updated []*Room
-	closed  []string
-	scores  map[string]int
+	created     []*Room
+	updated     []*Room
+	closed      []string
+	scores      map[string]int
+	userRooms   map[string]string
+	activeRooms map[string]bool // roomID -> active
 }
 
 func newRecordingRepository() *recordingRepository {
-	return &recordingRepository{scores: make(map[string]int)}
+	return &recordingRepository{
+		scores:      make(map[string]int),
+		userRooms:   make(map[string]string),
+		activeRooms: make(map[string]bool),
+	}
 }
 
 func (r *recordingRepository) CreateRoom(room *Room) error {
 	r.created = append(r.created, room)
+	r.activeRooms[room.ID] = true
 	return nil
 }
 
@@ -32,6 +42,7 @@ func (r *recordingRepository) UpdateRoom(room *Room) error {
 
 func (r *recordingRepository) CloseRoom(roomID string, closedAt time.Time) error {
 	r.closed = append(r.closed, roomID)
+	r.activeRooms[roomID] = false
 	return nil
 }
 
@@ -40,11 +51,98 @@ func (r *recordingRepository) UpsertScore(roomID, playerID string, score int) er
 	return nil
 }
 
+func (r *recordingRepository) GetUserRoom(userID string) (string, error) {
+	return r.userRooms[userID], nil
+}
+
+func (r *recordingRepository) SetUserRoom(userID, roomID string) error {
+	r.userRooms[userID] = roomID
+	return nil
+}
+
+func (r *recordingRepository) RemoveUserRoom(userID string) error {
+	delete(r.userRooms, userID)
+	return nil
+}
+
+func (r *recordingRepository) IsRoomActive(roomID string) (bool, error) {
+	return r.activeRooms[roomID], nil
+}
+
+func (r *recordingRepository) CountActiveRoomsByZone(zoneID string) (int, error) {
+	count := 0
+	for _, room := range r.created {
+		if room.ZoneID == zoneID && r.activeRooms[room.ID] {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// mockZoneRepository is a mock implementation of zone.Repository
+type mockZoneRepository struct {
+	zones map[string]*zone.GameZone
+}
+
+func newMockZoneRepository() *mockZoneRepository {
+	return &mockZoneRepository{
+		zones: make(map[string]*zone.GameZone),
+	}
+}
+
+func (m *mockZoneRepository) CreateZone(z *zone.GameZone) error {
+	m.zones[z.ID] = z
+	return nil
+}
+
+func (m *mockZoneRepository) UpdateZone(z *zone.GameZone) error {
+	m.zones[z.ID] = z
+	return nil
+}
+
+func (m *mockZoneRepository) DeleteZone(zoneID string) error {
+	delete(m.zones, zoneID)
+	return nil
+}
+
+func (m *mockZoneRepository) GetZone(zoneID string) (*zone.GameZone, error) {
+	return m.zones[zoneID], nil
+}
+
+func (m *mockZoneRepository) GetZoneByName(name string) (*zone.GameZone, error) {
+	for _, z := range m.zones {
+		if z.Name == name {
+			return z, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *mockZoneRepository) ListZones() ([]*zone.GameZone, error) {
+	zones := make([]*zone.GameZone, 0, len(m.zones))
+	for _, z := range m.zones {
+		zones = append(zones, z)
+	}
+	return zones, nil
+}
+
+func setupTestZoneManager() (*zone.Manager, string) {
+	repo := newMockZoneRepository()
+	zm := zone.NewManager(repo)
+	// Create a test zone
+	z, err := zm.CreateZone("测试区", "用于测试", 100)
+	if err != nil {
+		panic(err)
+	}
+	return zm, z.ID
+}
+
 func TestManagerCreateRoomUsesUUIDAndRecordsMetadata(t *testing.T) {
 	repo := newRecordingRepository()
-	manager := NewManager(repo)
+	zoneManager, zoneID := setupTestZoneManager()
+	manager := NewManager(repo, zoneManager)
 
-	r, err := manager.CreateRoom("花牌局", model.GameMode4Player, "owner-1")
+	r, err := manager.CreateRoom(zoneID, "花牌局", model.GameMode4Player, "owner-1", 8)
 	if err != nil {
 		t.Fatalf("CreateRoom returned error: %v", err)
 	}
@@ -79,9 +177,11 @@ func TestManagerCreateRoomUsesUUIDAndRecordsMetadata(t *testing.T) {
 }
 
 func TestManagerCreateRoomUsesThreePlayerCapacity(t *testing.T) {
-	manager := NewManager(newRecordingRepository())
+	repo := newRecordingRepository()
+	zoneManager, zoneID := setupTestZoneManager()
+	manager := NewManager(repo, zoneManager)
 
-	r, err := manager.CreateRoom("三人局", model.GameMode3Player, "owner-1")
+	r, err := manager.CreateRoom(zoneID, "三人局", model.GameMode3Player, "owner-1", 8)
 	if err != nil {
 		t.Fatalf("CreateRoom returned error: %v", err)
 	}
@@ -93,8 +193,9 @@ func TestManagerCreateRoomUsesThreePlayerCapacity(t *testing.T) {
 
 func TestRoomMutationsUpdateTimestampsAndScores(t *testing.T) {
 	repo := newRecordingRepository()
-	manager := NewManager(repo)
-	r, err := manager.CreateRoom("花牌局", model.GameMode4Player, "owner-1")
+	zoneManager, zoneID := setupTestZoneManager()
+	manager := NewManager(repo, zoneManager)
+	r, err := manager.CreateRoom(zoneID, "花牌局", model.GameMode4Player, "owner-1", 8)
 	if err != nil {
 		t.Fatalf("CreateRoom returned error: %v", err)
 	}
@@ -129,13 +230,14 @@ func TestRoomMutationsUpdateTimestampsAndScores(t *testing.T) {
 
 func TestManagerCloseRoomRecordsClosedAt(t *testing.T) {
 	repo := newRecordingRepository()
-	manager := NewManager(repo)
-	r, err := manager.CreateRoom("花牌局", model.GameMode4Player, "owner-1")
+	zoneManager, zoneID := setupTestZoneManager()
+	manager := NewManager(repo, zoneManager)
+	r, err := manager.CreateRoom(zoneID, "花牌局", model.GameMode4Player, "owner-1", 8)
 	if err != nil {
 		t.Fatalf("CreateRoom returned error: %v", err)
 	}
 
-	if err := manager.CloseRoom(r.ID); err != nil {
+	if err := manager.CloseRoom(r.ID, "owner-1"); err != nil {
 		t.Fatalf("CloseRoom returned error: %v", err)
 	}
 
@@ -150,5 +252,114 @@ func TestManagerCloseRoomRecordsClosedAt(t *testing.T) {
 	}
 	if len(repo.closed) != 1 || repo.closed[0] != r.ID {
 		t.Fatalf("repository should record closed room once, got %#v", repo.closed)
+	}
+}
+
+func TestManagerCreateRoomAndJoin(t *testing.T) {
+	repo := newRecordingRepository()
+	zoneManager, zoneID := setupTestZoneManager()
+	manager := NewManager(repo, zoneManager)
+
+	owner := &RoomPlayer{ID: "owner-1", Name: "房主"}
+	r, err := manager.CreateRoomAndJoin(zoneID, "测试局", model.GameMode3Player, owner, 8)
+	if err != nil {
+		t.Fatalf("CreateRoomAndJoin returned error: %v", err)
+	}
+
+	if _, err := uuid.Parse(r.ID); err != nil {
+		t.Fatalf("room ID should be UUID, got %q: %v", r.ID, err)
+	}
+	if r.PlayerCount() != 1 {
+		t.Fatalf("should have 1 player, got %d", r.PlayerCount())
+	}
+	if r.Players[0].ID != owner.ID {
+		t.Fatalf("player ID = %q, want %q", r.Players[0].ID, owner.ID)
+	}
+	if r.Owner != owner.ID {
+		t.Fatalf("owner ID = %q, want %q", r.Owner, owner.ID)
+	}
+	if repo.userRooms[owner.ID] != r.ID {
+		t.Fatalf("user room should be recorded")
+	}
+}
+
+func TestManagerConcurrentRoomCreation(t *testing.T) {
+	repo := newRecordingRepository()
+	zoneManager, zoneID := setupTestZoneManager()
+	manager := NewManager(repo, zoneManager)
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	rooms := make([]*Room, goroutines)
+	errs := make([]error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			owner := &RoomPlayer{ID: fmt.Sprintf("owner-%d", idx), Name: fmt.Sprintf("房主%d", idx)}
+			r, err := manager.CreateRoomAndJoin(zoneID, fmt.Sprintf("测试局%d", idx), model.GameMode3Player, owner, 8)
+			rooms[idx] = r
+			errs[idx] = err
+		}(i)
+	}
+
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: error = %v", i, err)
+		}
+		if rooms[i] == nil {
+			t.Errorf("goroutine %d: room is nil", i)
+		}
+	}
+
+	seenIDs := make(map[string]bool)
+	for _, r := range rooms {
+		if r != nil {
+			if seenIDs[r.ID] {
+				t.Errorf("duplicate room ID: %q", r.ID)
+			}
+			seenIDs[r.ID] = true
+		}
+	}
+}
+
+func TestManagerConcurrentJoins(t *testing.T) {
+	repo := newRecordingRepository()
+	zoneManager, zoneID := setupTestZoneManager()
+	manager := NewManager(repo, zoneManager)
+
+	owner := &RoomPlayer{ID: "owner-1", Name: "房主"}
+	r, err := manager.CreateRoomAndJoin(zoneID, "测试局", model.GameMode4Player, owner, 8)
+	if err != nil {
+		t.Fatalf("CreateRoomAndJoin returned error: %v", err)
+	}
+
+	const goroutines = 3
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			player := &RoomPlayer{ID: fmt.Sprintf("player-%d", idx), Name: fmt.Sprintf("玩家%d", idx)}
+			_, err := manager.JoinRoom(r.ID, player)
+			errs[idx] = err
+		}(i)
+	}
+
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: error = %v", i, err)
+		}
+	}
+
+	if len(r.Players) != 4 {
+		t.Errorf("should have 4 players, got %d", len(r.Players))
 	}
 }

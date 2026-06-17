@@ -4,20 +4,28 @@ import { useRouter } from 'vue-router'
 import { useRoomStore } from '../../stores/room'
 import { GameMode } from '../../types/game'
 
+const props = defineProps<{
+  zoneId: string | null
+}>()
 const emit = defineEmits<{ close: [] }>()
 const router = useRouter()
 const roomStore = useRoomStore()
 
 const name = ref('')
 const mode = ref<GameMode>(GameMode.Mode3Player)
+const maxRounds = ref(8)
 const loading = ref(false)
 const error = ref('')
 
 async function handleCreate() {
+  if (!props.zoneId) {
+    error.value = '请先选择游戏区'
+    return
+  }
   loading.value = true
   error.value = ''
   try {
-    const roomId = await roomStore.createRoom(name.value || '花牌局', mode.value)
+    const roomId = await roomStore.createRoom(props.zoneId, name.value || '花牌局', mode.value, maxRounds.value)
     emit('close')
     router.push(`/room/${roomId}`)
   } catch {
@@ -62,6 +70,17 @@ async function handleCreate() {
               4人含歇家
             </button>
           </div>
+        </div>
+
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">最大局数</label>
+          <input
+            v-model.number="maxRounds"
+            type="number"
+            min="1"
+            max="100"
+            class="w-full px-4 py-2.5 rounded-lg bg-bg-input border border-amber-900/30 text-gray-100 focus:outline-none focus:ring-2 focus:ring-accent/50"
+          />
         </div>
 
         <div v-if="error" class="text-red-400 text-sm bg-red-900/20 px-3 py-2 rounded">{{ error }}</div>
